@@ -33,18 +33,7 @@ export interface DMResponse {
 
 export class DMEngine {
   public static async processPlayerAction(playerActionText: string): Promise<DMResponse> {
-    if (
-      playerActionText.includes('世界观') ||
-      playerActionText.includes('preset-') ||
-      playerActionText.includes('赛博朋克') ||
-      playerActionText.includes('东方修仙') ||
-      playerActionText.includes('废土') ||
-      playerActionText.includes('蒸汽')
-    ) {
-      globalWorld.initDefaultWorld();
-    }
-
-    const pc = globalWorld.characters.get('pc-player');
+    const pc = globalWorld.characters.get('pc-player') || Array.from(globalWorld.characters.values()).find((c) => c.type === 'PC');
     const currentLocation = pc ? globalWorld.locations.get(pc.location_id) : null;
     const npcsHere = Array.from(globalWorld.characters.values()).filter(
       (c) => c.type === 'NPC' && c.location_id === pc?.location_id
@@ -52,11 +41,14 @@ export class DMEngine {
     const activeSeeds = Array.from(globalWorld.seeds.values()).filter((s) => s.status === 'IN_PROGRESS');
     const hiddenTruths = Array.from(globalWorld.hiddenTruths.values());
 
+    const profile = globalWorld.profile;
+    const axioms = globalWorld.axioms || [];
+
     const ai = getGenAI();
 
     if (!ai) {
       const fallbackNarration = `【DM 提示】(未检测到 GEMINI_API_KEY，使用基础规则DM反馈)
-你尝试执行了动作：“${playerActionText}”。在 ${currentLocation?.name} 的空气中弥漫着蒸汽与煤烟，周围的 ${npcsHere.map((n) => n.name).join('、')} 警惕地看着你。局势依然在暗流涌动。`;
+你尝试执行了动作：“${playerActionText}”。在 ${currentLocation?.name || '未知区域'} 的静谧氛围中，周围的 ${npcsHere.map((n) => n.name).join('、') || '环境'} 保持着警惕。世界法则持续运转。`;
 
       await SchedulerEngine.processEpochTick();
       await CausalityEngine.tickSeeds();
@@ -81,20 +73,36 @@ export class DMEngine {
         connectedTo: l.connected_to,
       }));
 
+      const axiomsFormatted = axioms.length > 0
+        ? axioms.map((a) => `- [${a.category}] ${a.statement} (后果: ${a.consequences.join(', ')})`).join('\n')
+        : '- 天地万物遵循基本因果规律运转。';
+
       const systemPrompt = `你是一个跑团/AI Native 永恒世界 RPG 的全知【DM (Dungeon Master) 地下城主】。
-设计核心哲学: 类似于《塞尔达传说: 荒野之息》的开放世界沙盒。精髓在于【世界推演】而非固定脚本剧本！
+设计核心哲学: 开放世界沙盒。精髓在于【世界推演】而非固定脚本剧本！
 - 没有固定强制的线性剧情主线，由玩家自由决定道路与世界方向。
-- 玩家可以通过接受雇佣兵/黑客/修仙/拾荒者悬赏任务、探索遗迹/废墟/荒区、偶遇打劫匪徒或遭遇派系冲突来逐步开启遭遇。
-- 这些遭遇事件幕后可能潜伏着共同的幕后黑手或暗流，也可能只是世态常情，完全由玩家的探索与判断决定。
-- 玩家随时可以自定义或补充世界观设定（例如设定某种特殊技术、宗门仙法、派系势力或大地理布局），你必须欣然接纳并将其融汇入世界大地图中！
+- 玩家随时可以自定义或补充世界观设定，你必须接纳并遵守该世界的宪法与公理！
 
 当前纪元 (Epoch): ${globalWorld.snapshot.epoch}
-当前主世界观: 【${globalWorld.snapshot.world_name}】 (${globalWorld.snapshot.world_description})
+
+【世界宪法 (World Profile)】:
+- 世界名称: ${profile?.display_name || globalWorld.snapshot.world_name}
+- 世界描述: ${profile?.world_description || globalWorld.snapshot.world_description}
+- 力量体系: ${profile?.power_system || '标准能量'} (代价: ${profile?.power_costs || '守恒'})
+- 死亡规则: ${profile?.death_rules || '不可逆'}
+- 科技/文明层级: ${profile?.technology_model || '混合型'}
+- 社会/政治结构: ${profile?.social_structure || '多元势力'}
+- 核心专用术语: ${JSON.stringify(profile?.terminology || {})}
+- 允许/倡导概念: ${JSON.stringify(profile?.allowed_concepts || [])}
+- 禁忌/禁止概念: ${JSON.stringify(profile?.forbidden_concepts || [])}
+
+【世界绝对公理 (World Axioms - 必须严格遵循)】:
+${axiomsFormatted}
 
 【后台完整世界状态与玩家数据 Context】:
 1. 玩家角色卡:
-   - 姓名: ${pc?.name} (${pc?.title})
-   - 状态: HP ${pc?.attributes.hp}/${pc?.attributes.max_hp}, MP ${pc?.attributes.mp}/${pc?.attributes.max_mp}, 金币 ${pc?.resources.gold}G
+   - 姓名: ${pc?.name || '旅人'} (${pc?.title || '探索者'})
+   - 种族: ${pc?.species || '本生界灵'}
+   - 状态: HP ${pc?.attributes.hp}/${pc?.attributes.max_hp}, MP ${pc?.attributes.mp}/${pc?.attributes.max_mp}, 资源 ${pc?.resources.gold}
    - 基础属性: STR ${pc?.attributes.strength}, DEX ${pc?.attributes.dexterity}, INT ${pc?.attributes.intelligence}, CHA ${pc?.attributes.charisma}
    - 技能列表: ${JSON.stringify(pc?.skills)}
    - 背包物品: ${JSON.stringify(pc?.inventory)}
@@ -104,7 +112,7 @@ export class DMEngine {
    - ${JSON.stringify(knownLocations)}
 
 3. 本区域与全域 NPCs 状态:
-   - 当前地点 NPC: ${JSON.stringify(npcsHere.map((n) => ({ id: n.id, name: n.name, title: n.title, goal: n.goal.primary, trust: n.relationships.find((r) => r.target_id === pc?.id)?.trust || 50 })))}
+   - 当前地点 NPC: ${JSON.stringify(npcsHere.map((n) => ({ id: n.id, name: n.name, title: n.title, species: n.species, goal: n.goal.primary, trust: n.relationships.find((r) => r.target_id === pc?.id)?.trust || 50 })))}
 
 4. 活跃因果种子 (Seeds & Pressure):
    - 活跃 Seeds: ${JSON.stringify(activeSeeds.map((s) => ({ id: s.id, type: s.type, desc: s.visible_layer.description, progress: (s.progress * 100).toFixed(0) + '%' })))}
@@ -115,23 +123,14 @@ export class DMEngine {
 【玩家的输入/行动/询问】: "${playerActionText}"
 
 【DM 的行为准则与响应要求】:
-1. 一切世界推进与信息传达全凭你与玩家的对话！
-2. 尊重玩家的世界观自定义与行动选择：如果玩家提出了对世界观的补充（如设定风土人情、派系规则、特殊术语），请顺应并将其织入故事中；如果玩家询问“有什么任务/附近有什么”，请以当前地点（如酒馆/客栈/黑市/驿站）告示板或NPC口述形式提供多样化的委托供玩家挑选！
-3. 地图地点是无限扩展的！如果玩家探索未标记区域、走入新设施、进入神秘遗迹或前往新地点，你可以根据故事发展自由创作并生成新地点！
-4. 如果玩家询问【个人状态、位置、背包物品、NPC关系、世界观真相、近况纪元】，请以 DM 沉浸专业且完全准确的态度，直接结合 Context 在对话中如实答复！
-5. 【创角与逐步引导规则 (极其重要)】:
-   - 创角完成的必要充分条件是同时具备三大核心要素：【1. 姓名(name)】、【2. 职业/身份背景(title)】、【3. 擅长技能/特点(skills)】。
-   - 必须完全匹配当前选择的世界观【${globalWorld.snapshot.world_name}】与所在地点【${currentLocation?.name}】的氛围进行沉浸式描述和举例！
-   - 如果玩家仅回答了部分信息（例如仅告知了姓名“叫我李飞”，但尚未说明职业与特长技能）：
-     - 请仅在 characterUpdate 中更新已提供的字段（如 name: "李飞"）。
-     - 严禁直接宣布创角完成或分配委托任务！
-     - 必须在 dmNarration 中结合【${globalWorld.snapshot.world_name}】风格热情确认，并自然且明确地抛出下一个创角提问（针对当前世界观给予恰当的职业与技能举例）。
-   - 只有当玩家通过逐步对话补齐了【姓名 + 职业 + 技能特点】，或者玩家直接选择了【一键创角模版】/一次性给出了全套资料时，方可判定创角完成，并在 dmNarration 中给出【创角完成，旅程开启】的沉浸式描述，引导玩家在当前地点【${currentLocation?.name}】正式展开冒险！
-6. 如果玩家的行动触发了后端状态改变（包括创角/设定角色、开辟新地点、位置移动、生命/金币增减、搜集线索、NPC好感变化），请在返回 JSON 的结构化属性中准确写入，系统会自动同步后台引擎：
-   - characterUpdate: 包含 name, title, skills 等键值的对象 (如果玩家设定/更改了角色名字、职业、称号或技能)
-   - newLocation: { id: string (如 "loc-redleaf-inn"), name: string, type: "CITY"|"TOWN"|"FOREST"|"DUNGEON", description: string, connectedTo: string[] } (如果生成了新地点)
-   - targetLocationId: string (如果玩家移动了位置，可以是已知地点ID或新生成的地点ID)
-   - hpDelta: 整数 (如 -10 或 +15)
+1. 必须完全尊重世界宪法 Profile 与公理 Axioms 的约束，严禁输出破坏世界规则或包含禁忌概念的内容。
+2. 一切世界推进与信息传达全凭你与玩家的对话。
+3. 如果玩家提出了对世界观的补充，请顺应并将其织入故事中。
+4. 如果玩家的行动触发了后端状态改变，请在返回 JSON 的结构化属性中准确写入：
+   - characterUpdate: 包含 name, title, species, skills 等键值的对象 (如果玩家设定/更改了角色属性)
+   - newLocation: { id: string, name: string, type: "CITY"|"TOWN"|"FOREST"|"DUNGEON"|"RUINS", description: string, connectedTo: string[] } (如果生成了新地点)
+   - targetLocationId: string (如果玩家移动了位置)
+   - hpDelta: 整数
    - mpDelta: 整数
    - goldDelta: 整数
    - npcAffinityDelta: { npcId: string, trustDelta: number, favorDelta: number }
@@ -141,8 +140,8 @@ export class DMEngine {
 
 必须严格返回合法 JSON 格式:
 {
-  "dmNarration": "DM叙述或对玩家提问/创角设定的答复内容...",
-  "diceRoll": { "skill": "侦察", "roll": 42, "target": 65, "success": true },
+  "dmNarration": "DM叙述或对玩家行动的回应...",
+  "diceRoll": null,
   "characterUpdate": null,
   "newLocation": null,
   "targetLocationId": null,
@@ -155,7 +154,7 @@ export class DMEngine {
 }`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3.6-flash',
+        model: 'gemini-2.5-flash',
         contents: systemPrompt,
         config: {
           responseMimeType: 'application/json',
@@ -189,7 +188,7 @@ export class DMEngine {
         const newLocId = parsed.newLocation.id || `loc-dyn-${Date.now()}`;
         const connectedLocs = Array.isArray(parsed.newLocation.connectedTo) && parsed.newLocation.connectedTo.length > 0
           ? parsed.newLocation.connectedTo
-          : [pc?.location_id || 'loc-capital'];
+          : [pc?.location_id || 'loc-start'];
 
         const newLocObj: Location = {
           id: newLocId,
@@ -298,7 +297,7 @@ export class DMEngine {
             preconditions: [],
             source: { type: 'LLM' },
           });
-          updatesSummary.push(`🪙 金币 ${parsed.goldDelta > 0 ? '+' : ''}${parsed.goldDelta}`);
+          updatesSummary.push(`🪙 资源 ${parsed.goldDelta > 0 ? '+' : ''}${parsed.goldDelta}`);
         }
       }
 
@@ -341,13 +340,13 @@ export class DMEngine {
 
       // Commit all proposals authoritatively via Recorder
       if (proposals.length > 0) {
-        const commitRes = await recorder.commit('world-snapshot-001', proposals);
+        const commitRes = await recorder.commit(globalWorld.snapshot.id || 'world-snapshot-001', proposals);
         if (!commitRes.success) {
           console.warn('[DMEngine] Recorder commit warnings/errors:', commitRes.errors);
         }
       }
 
-      // Apply Evidence Collection via TruthsEngine (which uses Recorder)
+      // Apply Evidence Collection via TruthsEngine
       if (parsed.collectedEvidence && parsed.collectedEvidence.truthId && parsed.collectedEvidence.evidenceName) {
         const res = await TruthsEngine.addEvidenceToTruth(
           parsed.collectedEvidence.truthId,
@@ -355,11 +354,11 @@ export class DMEngine {
         );
         updatesSummary.push(`🔍 搜集到了突破真相物证: 《${parsed.collectedEvidence.evidenceName}》`);
         if (res.isNowReadyToReveal) {
-          updatesSummary.push(`🔑 【线索集齐警告】对应真相《${res.truth?.title}》物证已集齐，可随时手动打破！`);
+          updatesSummary.push(`🔑 【线索集齐警告】对应真相《${res.truth?.title}》物证已集齐！`);
         }
       }
 
-      // Advance Epoch Tick if requested (uses Recorder inside Scheduler & Causality engines)
+      // Advance Epoch Tick if requested
       if (parsed.advanceEpoch !== false) {
         await SchedulerEngine.processEpochTick();
         const seedEvents = await CausalityEngine.tickSeeds();

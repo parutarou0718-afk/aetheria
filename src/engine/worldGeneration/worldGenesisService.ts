@@ -10,8 +10,9 @@ import { WorldGenerationRepair } from './worldGenerationRepair';
 import { WorldRepository } from '../world/worldRepository';
 import { WorldTemplate } from '../worldProfile/worldTemplateTypes';
 import { WorldSnapshot } from '../../types';
-import { globalWorld, setRecorderWriteContext } from '../worldState';
+import { setRecorderWriteContext } from '../worldState';
 import { WorldCacheLoader } from '../world/worldCacheLoader';
+import { dbManager } from '../persistence/database';
 
 export interface GenesisResult {
   worldId: string;
@@ -37,11 +38,11 @@ export class WorldGenesisService {
     // Step 2: Phase 1 - Profile & Axioms Generation
     const { profile, axioms } = await WorldProfileGenerator.generateProfileAndAxioms(request, idFactory);
 
-    // Step 3: Phase 2 - Skeleton Generation
-    const skeleton = WorldSkeletonGenerator.generateSkeleton(profile, axioms, idFactory);
+    // Step 3: Phase 2 - Skeleton Generation (AI / Dynamic)
+    const skeleton = await WorldSkeletonGenerator.generateSkeleton(profile, axioms, idFactory);
 
-    // Step 4: Phase 3 - Entity Generation
-    const entities = WorldEntityGenerator.generateEntities(profile, skeleton, idFactory);
+    // Step 4: Phase 3 - Entity Generation (AI / Dynamic)
+    const entities = await WorldEntityGenerator.generateEntities(profile, skeleton, idFactory);
 
     const snapshot: WorldSnapshot = {
       id: worldId,
@@ -93,44 +94,46 @@ export class WorldGenesisService {
       }
     }
 
-    // Step 7: Phase 6 - Atomic Persistence
+    // Step 7: Phase 6 - Atomic Persistence in Single SQL Transaction
     setRecorderWriteContext(true);
     try {
-      // Clean previous data for this worldId atomically
-      await WorldRepository.deleteWorldData(worldId);
+      await dbManager.transaction(async () => {
+        // Clean previous data for this worldId
+        await WorldRepository.deleteWorldData(worldId);
 
-      // Save new world snapshot
-      await WorldRepository.saveWorldSnapshot(snapshot);
+        // Save new world snapshot
+        await WorldRepository.saveWorldSnapshot(snapshot);
 
-      // Save Profile & Axioms
-      await WorldRepository.saveWorldProfile(worldId, profile);
-      await WorldRepository.saveWorldAxioms(worldId, axioms);
+        // Save Profile & Axioms
+        await WorldRepository.saveWorldProfile(worldId, profile);
+        await WorldRepository.saveWorldAxioms(worldId, axioms);
 
-      // Save Entities
-      for (const loc of template.locations) {
-        await WorldRepository.saveLocation(worldId, loc);
-      }
-      for (const edge of template.locationEdges) {
-        await WorldRepository.saveLocationEdge(worldId, edge);
-      }
-      for (const char of template.characters) {
-        await WorldRepository.saveCharacter(worldId, char);
-      }
-      for (const org of template.organizations) {
-        await WorldRepository.saveOrganization(worldId, org);
-      }
-      for (const fact of template.facts) {
-        await WorldRepository.saveFact(worldId, fact);
-      }
-      for (const truth of template.hiddenTruths) {
-        await WorldRepository.saveHiddenTruth(worldId, truth);
-      }
-      for (const seed of template.seeds) {
-        await WorldRepository.saveSeed(worldId, seed);
-      }
-      for (const evt of template.events) {
-        await WorldRepository.saveEvent(worldId, evt);
-      }
+        // Save Skeleton & Entities
+        for (const loc of template.locations) {
+          await WorldRepository.saveLocation(worldId, loc);
+        }
+        for (const edge of template.locationEdges) {
+          await WorldRepository.saveLocationEdge(worldId, edge);
+        }
+        for (const char of template.characters) {
+          await WorldRepository.saveCharacter(worldId, char);
+        }
+        for (const org of template.organizations) {
+          await WorldRepository.saveOrganization(worldId, org);
+        }
+        for (const fact of template.facts) {
+          await WorldRepository.saveFact(worldId, fact);
+        }
+        for (const truth of template.hiddenTruths) {
+          await WorldRepository.saveHiddenTruth(worldId, truth);
+        }
+        for (const seed of template.seeds) {
+          await WorldRepository.saveSeed(worldId, seed);
+        }
+        for (const evt of template.events) {
+          await WorldRepository.saveEvent(worldId, evt);
+        }
+      });
 
       // Reload into in-memory globalWorld cache
       await WorldCacheLoader.loadWorldStateIntoCache(worldId);

@@ -1,7 +1,6 @@
 import { WorldProfile } from '../worldProfile/worldProfileTypes';
 import { WorldAxiom } from './worldAxiomTypes';
 import { WorldTemplate } from '../worldProfile/worldTemplateTypes';
-import { ValidationReport, WorldGenerationValidator } from './worldGenerationValidator';
 import { DeterministicIdFactory } from './deterministicIdFactory';
 
 export class WorldGenerationRepair {
@@ -13,13 +12,18 @@ export class WorldGenerationRepair {
   ): { profile: WorldProfile; axioms: WorldAxiom[]; template: WorldTemplate; repaired: boolean; changes: string[] } {
     const changes: string[] = [];
 
+    // Derive profile terms for repairs
+    const defaultTitle = profile.terminology?.professionTerms?.[0] || '行者';
+    const defaultSpecies = profile.terminology?.creatureTerms?.[0] || profile.cultural_influences?.[0] || '世生灵';
+    const defaultSettlement = profile.terminology?.settlementTerms?.[0] || '聚落';
+
     // 1. Repair Profile
     if (!profile.display_name || profile.display_name.trim().length === 0) {
-      profile.display_name = '无名未定世界';
+      profile.display_name = '无名新界';
       changes.push('Repaired empty profile.display_name.');
     }
 
-    if (!profile.world_description || profile.world_description.trim().length < 50) {
+    if (!profile.world_description || profile.world_description.trim().length < 30) {
       profile.world_description = `${profile.display_name}是一个由独特的天然法则与人文历史构筑的崭新世界。各地势力林立，暗流涌动，等待探索者发掘其中隐藏的真相。`;
       changes.push('Repaired short profile.world_description.');
     }
@@ -143,7 +147,7 @@ export class WorldGenerationRepair {
       }
     }
 
-    // 4. Repair PC
+    // 4. Repair PC (Profile-Driven, No hardcoded "人类" / "探索者")
     const pcs = template.characters.filter((c) => c.type === 'PC');
     if (pcs.length === 0) {
       const firstLocId = template.locations[0]?.id || 'loc-start';
@@ -151,20 +155,20 @@ export class WorldGenerationRepair {
       template.characters.unshift({
         id: pcId,
         type: 'PC',
-        name: '无名旅者',
-        title: '探索者',
-        species: '人类',
+        name: '初游者',
+        title: defaultTitle,
+        species: defaultSpecies,
         age: 22,
         status: 'ALIVE',
         presence_state: 'AT_LOCATION',
         location_id: firstLocId,
-        goal: { primary: '探索这片未知的世界并解开其隐藏的法则', secondary: [] },
-        personality: ['勇敢', '好奇'],
+        goal: { primary: `探索${profile.display_name}并寻获法则本源`, secondary: [] },
+        personality: ['果敢', '好奇'],
         fear: '迷失在未知中',
         attributes: { hp: 100, max_hp: 100, mp: 50, max_mp: 50, strength: 10, dexterity: 10, intelligence: 10, charisma: 10 },
-        skills: { '基础感知': 10, '地理辨识': 10 },
+        skills: { '基础感知': 10, '地形辨识': 10 },
         resources: { gold: 50, reputation: 0 },
-        inventory: [{ item_id: 'item-bag', name: '旅行背包', quantity: 1, type: 'MISC' }],
+        inventory: [{ item_id: 'item-bag', name: '随身物品', quantity: 1, type: 'MISC' }],
         knowledge: { known_facts: [], known_characters: [], known_locations: [firstLocId] },
         memory: { short_term: [{ text: '踏上了新的旅途', importance: 5, epoch: 1 }], compressed: '', important_events: [] },
         relationships: [],
@@ -175,9 +179,8 @@ export class WorldGenerationRepair {
         created_at_epoch: 1,
         updated_at_epoch: 1,
       });
-      changes.push(`Created default PC character ${pcId}.`);
+      changes.push(`Created profile-driven PC character ${pcId} (species: ${defaultSpecies}, title: ${defaultTitle}).`);
     } else if (pcs.length > 1) {
-      // Downgrade extra PCs to NPCs
       for (let i = 1; i < pcs.length; i++) {
         pcs[i].type = 'NPC';
         changes.push(`Downgraded duplicate PC ${pcs[i].id} to NPC.`);
@@ -197,19 +200,19 @@ export class WorldGenerationRepair {
       const htId = idFactory.createId('ht', 1);
       template.hiddenTruths.push({
         id: htId,
-        title: '本世界的深层法则秘密',
+        title: `${profile.display_name}的深层法则秘辛`,
         layer: 'layer_1_personal_secrets',
         layer_name: '个人秘密',
         exists: true,
-        true_nature: '古老的遗迹中隐藏着关于本世界本源法则的线索。',
+        true_nature: `关于${defaultSettlement}与法则运行的深层原委。`,
         revealed: false,
         revealed_to_ids: [],
         locked_at_epoch: 1,
         never_changes: true,
-        evidence_required: ['遗迹古迹线索'],
+        evidence_required: ['古旧线索'],
         evidence_collected: [],
       });
-      changes.push(`Added default hidden truth ${htId}.`);
+      changes.push(`Added profile-driven hidden truth ${htId}.`);
     }
 
     const truthMap = new Map(template.hiddenTruths.map((ht) => [ht.id, ht]));
@@ -220,7 +223,40 @@ export class WorldGenerationRepair {
       }
     });
 
-    // 6. Repair Forbidden Concept Violations
+    // 6. Inject Missing Required Concepts
+    const requiredTerms = (profile.allowed_concepts || []).map((r) => r.trim()).filter((r) => r.length > 0);
+    if (requiredTerms.length > 0) {
+      const allWorldText = [
+        profile.display_name,
+        profile.world_description,
+        ...template.locations.map((l) => `${l.name} ${l.description}`),
+        ...template.characters.map((c) => `${c.name} ${c.title} ${c.species} ${c.goal.primary}`),
+        ...template.organizations.map((o) => `${o.name} ${o.description}`),
+        ...template.hiddenTruths.map((ht) => `${ht.title} ${ht.true_nature}`),
+        ...template.facts.map((f) => f.statement),
+      ].join(' ').toLowerCase();
+
+      for (const req of requiredTerms) {
+        if (!allWorldText.includes(req.toLowerCase())) {
+          // Inject missing concept into facts and first location
+          const newFactId = idFactory.createId('fact-req', Date.now());
+          template.facts.push({
+            id: newFactId,
+            statement: `在${profile.display_name}中，与"${req}"相关的法则与传闻被世人广为关注。`,
+            category: 'SOCIAL',
+            confidence: 'CONFIRMED',
+            source: { type: 'OBSERVATION', source_id: template.locations[0]?.id || 'loc-1', epoch_discovered: 1 },
+            related_entity_ids: [template.locations[0]?.id || 'loc-1'],
+            is_active: true,
+            created_at_epoch: 1,
+            updated_at_epoch: 1,
+          });
+          changes.push(`Injected missing required concept "${req}" into world facts.`);
+        }
+      }
+    }
+
+    // 7. Repair Forbidden Concept Violations
     const forbiddenTerms = (profile.forbidden_concepts || []).map((f) => f.trim()).filter((f) => f.length > 0);
     if (forbiddenTerms.length > 0) {
       const replaceForbidden = (text: string) => {
@@ -228,7 +264,7 @@ export class WorldGenerationRepair {
         for (const term of forbiddenTerms) {
           const reg = new RegExp(term, 'gi');
           if (reg.test(res)) {
-            res = res.replace(reg, '未知异象');
+            res = res.replace(reg, '未知事物');
             changes.push(`Replaced forbidden term "${term}" in text.`);
           }
         }
@@ -243,6 +279,14 @@ export class WorldGenerationRepair {
       template.characters.forEach((c) => {
         c.name = replaceForbidden(c.name);
         c.title = replaceForbidden(c.title);
+        c.species = replaceForbidden(c.species);
+      });
+      template.organizations.forEach((o) => {
+        o.name = replaceForbidden(o.name);
+        o.description = replaceForbidden(o.description);
+      });
+      template.facts.forEach((f) => {
+        f.statement = replaceForbidden(f.statement);
       });
     }
 

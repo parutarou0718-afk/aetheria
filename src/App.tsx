@@ -19,22 +19,24 @@ import { SeedsInspector } from './components/SeedsInspector';
 import { HiddenTruthsBoard } from './components/HiddenTruthsBoard';
 import { EventsTimeline } from './components/EventsTimeline';
 import { SchedulerMonitor } from './components/SchedulerMonitor';
-import { CharacterSheet } from './components/CharacterSheet';
 import { DMConsole, DMConsoleMessage } from './components/DMConsole';
 import { AdModal } from './components/AdModal';
 import { VIPModal } from './components/VIPModal';
 import { AdventureGalleryModal } from './components/AdventureGalleryModal';
-import { Sparkles, RefreshCw, Compass, Bell, Crown, Image as ImageIcon } from 'lucide-react';
+import { WorldGenesisModal } from './components/WorldGenesisModal';
+import { Sparkles, RefreshCw, Compass, Bell } from 'lucide-react';
 
 export default function App() {
   const [showInspector, setShowInspector] = useState<boolean>(false);
   const [inspectorTab, setInspectorTab] = useState<string>('map');
   const [isDMProcessing, setIsDMProcessing] = useState<boolean>(false);
+  const [isGenesisModalOpen, setIsGenesisModalOpen] = useState<boolean>(false);
+
   const [dmMessages, setDmMessages] = useState<DMConsoleMessage[]>([
     {
       id: 'welcome-1',
       sender: 'DM',
-      text: `🌌【AI Native 开放世界沙盒 • 创世大厅】\n\n欢迎来到全进程 AI 驱动的无界因果沙盒！在这里，没有固定死板的剧情剧本，一切世界法则、时代背景与命运走向皆由你决定。\n\n👉 **第 1 步：请首先选择你想要降临的【主世界观背景】**：\n1️⃣ **🏰 蒸汽与魔导纪元**（工业革命、蒸汽轰鸣、魔导遗迹、雇佣兵酒馆）\n2️⃣ **🏙️ 赛博朋克 • 霓虹深渊**（高天巨企、义体改造、暗网黑客、地下冷风酒吧）\n3️⃣ **☯️ 东方修仙 • 苍穹道界**（灵气复苏、宗门仙法、大道争锋、云来客栈）\n4️⃣ **☢️ 废土废墟 • 末日余晖**（辐射风暴、废墟拾荒、变异魔物、拾荒者驿站）\n\n*（请点击下方【1. 优先选世界观】按钮选定世界观，世界将被即时重构，随后可进一步打造你的主角身份！）*`,
+      text: `🌌【AI Native 开放世界沙盒 • 创世大厅】\n\n欢迎来到全进程 AI 驱动的无界因果沙盒！在这里，没有固定死板的四选一剧情剧本，一切世界法则、时代背景与命运走向皆由你的 Prompt 决定。\n\n👉 **请点击右上角【✨ 自由 AI 创世】或直接输入你想要降临的任意自由世界描述！**\n*（例如：“一个古老符文与电磁构装结合的浮空山谷”，系统将实时生成专属世界宪法、绝对公理与初始领地！）*`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       epoch: 0,
     },
@@ -102,25 +104,15 @@ export default function App() {
       const truthData = await truthRes.json();
       const statData = await statRes.json();
 
-      if (Array.isArray(charData) && charData.length === 0) {
-        console.warn('World characters empty. Auto resetting world baseline...');
-        await fetch('/api/v1/world/reset', { method: 'POST' });
-        // Retry fetch once
-        const retryCharRes = await fetch('/api/v1/characters');
-        const retryCharData = await retryCharRes.json();
-        setCharacters(retryCharData);
-      } else {
-        setCharacters(charData);
-      }
-
+      setCharacters(charData || []);
       setSnapshot(snapData.snapshot);
       setStats(statData.stats);
-      setLocations(locData);
-      setOrganizations(orgData);
+      setLocations(locData || []);
+      setOrganizations(orgData || []);
       setSeeds(seedData.seeds || []);
       setPressures(seedData.pressures || []);
-      setEvents(evtData);
-      setTruths(truthData);
+      setEvents(evtData || []);
+      setTruths(truthData || []);
     } catch (err) {
       console.error('Failed to fetch world data:', err);
     }
@@ -147,8 +139,7 @@ export default function App() {
     if (isTicking) return;
     setIsTicking(true);
     try {
-      const res = await fetch('/api/v1/admin/epoch/tick', { method: 'POST' });
-      const data = await res.json();
+      await fetch('/api/v1/admin/epoch/tick', { method: 'POST' });
       await fetchWorldData();
     } catch (err) {
       console.error('Failed to tick epoch:', err);
@@ -186,12 +177,11 @@ export default function App() {
     setIsDialogueLoading(true);
 
     try {
-      const res = await fetch(`/api/v1/characters/${selectedNPC.id}/dialogue`, {
+      await fetch(`/api/v1/characters/${selectedNPC.id}/dialogue`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message }),
       });
-      const data = await res.json();
       await fetchWorldData();
     } catch (err) {
       console.error('Dialogue failed:', err);
@@ -251,9 +241,6 @@ export default function App() {
       const data = await res.json();
       await fetchWorldData();
 
-      // Check Ad Trigger Rules:
-      // Condition: turnCountSinceLastAd >= 20 AND game days passed >= 1
-      // Timing: End of day (epoch changed) OR moved to different location/town
       const newTurns = commercialState.turnsSinceLastAd + 1;
       const currentEpoch = data.epoch || snapshot?.epoch || 1;
       const daysPassed = Math.max(0, currentEpoch - commercialState.lastAdEpoch);
@@ -362,21 +349,30 @@ export default function App() {
         {
           id: `msg-reset-${Date.now()}`,
           sender: 'DM',
-          text: `⚡【AI DM 世界重置完成 • 时间溯回至 Epoch 1】\n\n🌌【AI Native 开放世界沙盒 • 创世大厅】\n欢迎来到全进程 AI 驱动的无界因果沙盒！在开启你的全新冒险前，请首先选择你要降临的【主世界观背景】：\n\n1️⃣ **🏰 蒸汽与魔导纪元**（工业革命、蒸汽轰鸣、魔导遗迹、雇佣兵酒馆）\n2️⃣ **🏙️ 赛博朋克 • 霓虹深渊**（高天巨企、义体改造、暗网黑客、地下冷风酒吧）\n3️⃣ **☯️ 东方修仙 • 苍穹道界**（灵气复苏、宗门仙法、大道争锋、云来客栈）\n4️⃣ **☢️ 废土废墟 • 末日余晖**（辐射风暴、废墟拾荒、变异魔物、拾荒者驿站）\n\n👉 *（请点击下方【1. 优先选世界观】按钮选定世界观，随后填入创角三要素，即可正式启动冒险！）*`,
+          text: `⚡【AI DM 世界重置完成 • 时间溯回至 Epoch 1】\n\n请点击右上角【✨ 自由 AI 创世】或直接在此输入你的自由世界描述！`,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           epoch: 1,
         },
       ]);
-      setCommercialState((prev) => ({
-        ...prev,
-        turnsSinceLastAd: 0,
-        lastAdEpoch: 1,
-      }));
-      showToast('🔄 艾尔德兰世界已重置，已重新开启创角旅程！');
+      showToast('🔄 世界已重置！');
     } catch (err) {
       console.error('Reset failed:', err);
       showToast('⚠️ 世界重置失败，请重试');
     }
+  };
+
+  const handleGenesisComplete = async () => {
+    await fetchWorldData();
+    setDmMessages([
+      {
+        id: `msg-genesis-${Date.now()}`,
+        sender: 'DM',
+        text: `✨【AI 动态世界创生完成】\n\n新世界法则已完整锚定并原子持久化！世界宪法与绝对公理已生成。\n\n请设定你的角色姓名、职业背景与特长技能，即可正式展开全新沙盒探险！`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        epoch: 1,
+      },
+    ]);
+    showToast('✨ 自由 AI 动态创世成功，快开启你的全新旅途吧！');
   };
 
   const playerPC = characters.find((c) => c.type === 'PC') || characters[0];
@@ -388,7 +384,7 @@ export default function App() {
         <div className="text-center space-y-4 max-w-md bg-slate-900/80 border border-slate-800 p-6 rounded-2xl shadow-2xl backdrop-blur-md">
           <Compass className="w-10 h-10 text-amber-400 animate-spin mx-auto" />
           <div className="space-y-1">
-            <p className="text-sm font-semibold text-slate-200">正在同步艾尔德兰永恒因果律快照...</p>
+            <p className="text-sm font-semibold text-slate-200">正在同步 AI 驱动动态世界快照...</p>
             <p className="text-xs text-slate-400">如长时间无法载入，可点击下方按钮重新生成初始世界。</p>
           </div>
           <button
@@ -405,7 +401,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-amber-500/30 selection:text-amber-200 relative">
-      {/* Toast Notification Notification Banner */}
+      {/* Toast Notification Banner */}
       {toastMessage && (
         <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-amber-500 text-slate-950 px-4 py-2 rounded-xl font-bold text-xs shadow-2xl border border-amber-300 flex items-center gap-2 animate-in slide-in-from-top-4 duration-200">
           <Bell className="w-4 h-4 animate-bounce shrink-0" />
@@ -438,7 +434,7 @@ export default function App() {
             <div className="flex justify-between items-center text-indigo-300 font-bold">
               <span className="flex items-center gap-1.5">
                 <Sparkles className="w-4 h-4 text-indigo-400" />
-                Gemini 3.6 Flash - 深层因果律推演结果:
+                Gemini 2.5 Flash - 深层因果律推演结果:
               </span>
               <button
                 onClick={() => setDeductionText('')}
@@ -465,6 +461,7 @@ export default function App() {
           setMessages={setDmMessages}
           onGenerateArtForNarration={handleGenerateArtForNarration}
           artQuotas={commercialState.artQuotas}
+          onOpenGenesisModal={() => setIsGenesisModalOpen(true)}
         />
 
         {/* Background Engine Inspector (Toggleable) */}
@@ -477,7 +474,7 @@ export default function App() {
                   上帝视角后台数据监视器 (Backend World State Inspector)
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  仅供查验底层PRD逻辑：172种角色数据、4层真相图谱、因果种子演化与7律调度状态
+                  查验底层逻辑：世界宪法/公理、角色卡、4层真相图谱、因果种子演化与7律调度状态
                 </p>
               </div>
 
@@ -544,6 +541,13 @@ export default function App() {
         )}
       </main>
 
+      {/* Free-Text World Genesis Modal */}
+      <WorldGenesisModal
+        isOpen={isGenesisModalOpen}
+        onClose={() => setIsGenesisModalOpen(false)}
+        onGenesisComplete={handleGenesisComplete}
+      />
+
       {/* Interactive AI Dialogue Modal */}
       {isDialogueOpen && selectedNPC && (
         <NPCDialogueModal
@@ -585,7 +589,7 @@ export default function App() {
           if (dmMessages.length > 0) {
             const lastDM = dmMessages.filter((m) => m.sender === 'DM').pop();
             handleGenerateArtForNarration(
-              currentLocation?.name || '艾尔德兰',
+              currentLocation?.name || '新世界',
               lastDM?.text || '冒险的故事在继续'
             );
           }
@@ -595,4 +599,3 @@ export default function App() {
     </div>
   );
 }
-

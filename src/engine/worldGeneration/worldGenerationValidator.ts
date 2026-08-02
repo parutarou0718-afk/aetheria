@@ -42,12 +42,12 @@ export class WorldGenerationValidator {
       });
     }
 
-    if (!profile.world_description || profile.world_description.trim().length < 50) {
+    if (!profile.world_description || profile.world_description.trim().length < 30) {
       issues.push({
         ruleId: 'PROFILE_DESCRIPTION_TOO_SHORT',
         severity: 'ERROR',
         path: 'profile.world_description',
-        message: 'World description must be at least 50 characters long.',
+        message: 'World description must be at least 30 characters long.',
       });
     }
 
@@ -73,7 +73,7 @@ export class WorldGenerationValidator {
       }
     }
 
-    // 4. Forbidden Concepts Scan
+    // 4. Forbidden Concepts Complete Scan
     const forbiddenList = (profile.forbidden_concepts || []).map((f) => f.trim().toLowerCase()).filter(Boolean);
     if (forbiddenList.length > 0) {
       const inspectString = (text: string, pathStr: string) => {
@@ -100,14 +100,50 @@ export class WorldGenerationValidator {
       template.characters.forEach((c) => {
         inspectString(c.name, `characters[${c.id}].name`);
         inspectString(c.title, `characters[${c.id}].title`);
+        inspectString(c.species, `characters[${c.id}].species`);
       });
       template.organizations.forEach((o) => {
         inspectString(o.name, `organizations[${o.id}].name`);
         inspectString(o.description, `organizations[${o.id}].description`);
       });
+      template.hiddenTruths.forEach((ht) => {
+        inspectString(ht.title, `hiddenTruths[${ht.id}].title`);
+        inspectString(ht.true_nature, `hiddenTruths[${ht.id}].true_nature`);
+      });
+      template.facts.forEach((f) => {
+        inspectString(f.statement, `facts[${f.id}].statement`);
+      });
     }
 
-    // 5. Locations Graph & Connectivity
+    // 5. Required Concepts Complete Scan
+    const requiredList = (profile.allowed_concepts || []).map((r) => r.trim().toLowerCase()).filter(Boolean);
+    if (requiredList.length > 0) {
+      // Gather all text in world
+      const allWorldText = [
+        profile.display_name,
+        profile.world_description,
+        ...template.locations.map((l) => `${l.name} ${l.description}`),
+        ...template.characters.map((c) => `${c.name} ${c.title} ${c.species} ${c.goal.primary}`),
+        ...template.organizations.map((o) => `${o.name} ${o.description}`),
+        ...template.hiddenTruths.map((ht) => `${ht.title} ${ht.true_nature}`),
+        ...template.facts.map((f) => f.statement),
+        ...template.seeds.map((s) => s.visible_layer.description),
+      ].join(' ').toLowerCase();
+
+      for (const required of requiredList) {
+        if (!allWorldText.includes(required)) {
+          issues.push({
+            ruleId: 'REQUIRED_CONCEPT_MISSING',
+            severity: 'WARNING',
+            path: 'world',
+            message: `Required user concept "${required}" is missing from generated world.`,
+            suggestedFix: `Inject concept "${required}" into world facts or locations.`,
+          });
+        }
+      }
+    }
+
+    // 6. Locations Graph & Connectivity
     const locationIds = new Set(template.locations.map((l) => l.id));
     template.locations.forEach((l) => {
       l.connected_to.forEach((connId) => {
@@ -129,7 +165,6 @@ export class WorldGenerationValidator {
       const visited = new Set<string>([startId]);
       const queue = [startId];
 
-      // Build adjacency list from locations connected_to + edges
       const adj = new Map<string, Set<string>>();
       template.locations.forEach((l) => adj.set(l.id, new Set(l.connected_to)));
       template.locationEdges.forEach((e) => {
@@ -160,7 +195,7 @@ export class WorldGenerationValidator {
       }
     }
 
-    // 6. Edge Symmetry
+    // 7. Edge Symmetry
     const edgePairs = new Set(template.locationEdges.map((e) => `${e.from_location_id}->${e.to_location_id}`));
     template.locationEdges.forEach((e) => {
       const reverseKey = `${e.to_location_id}->${e.from_location_id}`;
@@ -175,7 +210,7 @@ export class WorldGenerationValidator {
       }
     });
 
-    // 7. Characters Validation
+    // 8. Characters Validation
     const pcCount = template.characters.filter((c) => c.type === 'PC').length;
     if (pcCount !== 1) {
       issues.push({
@@ -198,7 +233,7 @@ export class WorldGenerationValidator {
       }
     });
 
-    // 8. Organizations Validation
+    // 9. Organizations Validation
     template.organizations.forEach((o) => {
       if (o.headquarters_id && !locationIds.has(o.headquarters_id)) {
         issues.push({
@@ -218,7 +253,7 @@ export class WorldGenerationValidator {
       }
     });
 
-    // 9. Hidden Truths Layer Coverage
+    // 10. Hidden Truths Layer Coverage
     const layers = new Set(template.hiddenTruths.map((ht) => ht.layer));
     if (layers.size < 3) {
       issues.push({
@@ -229,7 +264,7 @@ export class WorldGenerationValidator {
       });
     }
 
-    // 10. Seeds Linked to Hidden Truths
+    // 11. Seeds Linked to Hidden Truths
     const truthIds = new Set(template.hiddenTruths.map((ht) => ht.id));
     template.seeds.forEach((s) => {
       const truthId = s.hidden_truth?.id;

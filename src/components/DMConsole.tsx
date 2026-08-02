@@ -1,5 +1,5 @@
-import { Sparkles, Send, Dices, MapPin, Heart, Coins, Shield, Flame, Compass, RefreshCw, Image as ImageIcon } from 'lucide-react';
 import React, { useState, useRef, useEffect } from 'react';
+import { Sparkles, Send, Dices, Image as ImageIcon, Wand2, Compass } from 'lucide-react';
 import { Character, Location } from '../types';
 
 export interface DMConsoleMessage {
@@ -29,6 +29,7 @@ interface DMConsoleProps {
   setMessages: React.Dispatch<React.SetStateAction<DMConsoleMessage[]>>;
   onGenerateArtForNarration?: (locationName: string, narrationSummary: string) => void;
   artQuotas?: number;
+  onOpenGenesisModal: () => void;
 }
 
 export const DMConsole: React.FC<DMConsoleProps> = ({
@@ -42,6 +43,7 @@ export const DMConsole: React.FC<DMConsoleProps> = ({
   setMessages,
   onGenerateArtForNarration,
   artQuotas,
+  onOpenGenesisModal,
 }) => {
   const [inputAction, setInputAction] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -67,7 +69,6 @@ export const DMConsole: React.FC<DMConsoleProps> = ({
     : Object.keys(playerCharacter.skills || {}).length > 0 &&
       !Object.keys(playerCharacter.skills || {}).includes('通用');
 
-  // 必须同时具备【姓名】、【职业身份】与【擅长特质技能】三大要素才算创角完成
   const isCharacterCreated = hasName && hasTitle && hasSkills;
   const [showQuickPills, setShowQuickPills] = useState(!isCharacterCreated);
 
@@ -120,13 +121,6 @@ export const DMConsole: React.FC<DMConsoleProps> = ({
     }
   };
 
-  const worldPresets = [
-    { label: '🏰 蒸汽与魔导', text: '【选择世界观】蒸汽与魔导纪元（工业革命与魔导遗迹，位于红叶雇佣兵酒馆）' },
-    { label: '🏙️ 赛博朋克', text: '【选择世界观】赛博朋克 • 霓虹深渊（义体改造与巨企统治，位于地下黑客酒吧）' },
-    { label: '☯️ 东方修仙', text: '【选择世界观】东方修仙 • 苍穹道界（宗门林立与大道争锋，位于云来客栈）' },
-    { label: '☢️ 废土余晖', text: '【选择世界观】废土废墟 • 末日余晖（辐射风暴与变异异种，位于拾荒者驿站）' },
-  ];
-
   const step1Names = [
     '叫我【李飞】，称号【破晓游侠】',
     '叫我【卡尔】，称号【孤胆猎魔人】',
@@ -148,24 +142,17 @@ export const DMConsole: React.FC<DMConsoleProps> = ({
     '我擅长【赛博黑客】与【枪斗术】',
   ];
 
-  const step4Styles = [
-    '偏好蒸汽轰鸣与魔导工业革命风格',
-    '偏好高天巨企与霓虹近未来赛博风',
-    '偏好灵气复苏与仙魔争锋玄幻风',
-    '偏好废土辐射与末日生存遗迹风',
-  ];
-
   const characterPresets = [
-    { label: '🗡️ 艾尔德兰猎魔人', text: '我的名字叫卡尔，职业是【孤胆猎魔人】，精通双剑与暗杀技巧，性格冷酷利落，崇尚自由。' },
+    { label: '🗡️ 奇幻猎魔人', text: '我的名字叫卡尔，职业是【孤胆猎魔人】，精通双剑与暗杀技巧，性格冷酷利落，崇尚自由。' },
     { label: '🏙️ 赛博黑客浪客', text: '我的名字叫 V，职业是【黑客浪客】，精通赛博潜入与高阶黑枪斗术，在下层区追寻真相。' },
     { label: '☯️ 蜀山散修剑客', text: '我的名字叫陆沉，职业是【散修剑客】，精通御剑术与三昧真火，誓要在苍穹道界踏寻仙途。' },
   ];
 
   const quickActions = [
-    '📜 询问老村长：“村里有什么雇佣兵委托任务？”',
-    '🗺️ 询问流浪商人：“这附近有什么危险荒野或古遗迹？”',
-    '🎒 询问 DM：“检查我当前的属性、背包物品与金币”',
-    '🌲 离开营地，小心翼翼地前往风蚀荒野探索',
+    '📜 询问旁人：“附近有什么悬赏委托任务？”',
+    '🗺️ 询问流浪者：“这附近有什么危险废墟或古遗迹？”',
+    '🎒 检查我当前的属性、背包物品与资源',
+    '🌲 离开当前据点，小心翼翼地前往附近未开发区域探索',
   ];
 
   return (
@@ -180,12 +167,20 @@ export const DMConsole: React.FC<DMConsoleProps> = ({
             <h2 className="text-xs sm:text-sm font-bold text-slate-100 flex items-center gap-1.5 sm:gap-2">
               AI 地下城主 (DM) 主控台
               <span className="px-1.5 sm:px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[9px] sm:text-[10px] font-mono border border-amber-500/30">
-                Gemini 3.6 Flash
+                Gemini 2.5 Flash • Profile Driven
               </span>
             </h2>
-            <p className="text-[10px] sm:text-[11px] text-slate-400 hidden xs:block">自然语言自由行动或询问（如“我当前属性”、“附近委托”）• DM 实时判断</p>
+            <p className="text-[10px] sm:text-[11px] text-slate-400 hidden xs:block">自然语言自由行动或询问 • DM 遵循世界宪法与绝对公理推演</p>
           </div>
         </div>
+
+        <button
+          onClick={onOpenGenesisModal}
+          className="px-3 py-1.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs rounded-xl shadow-lg transition cursor-pointer flex items-center gap-1.5 shrink-0"
+        >
+          <Wand2 className="w-3.5 h-3.5 text-slate-950" />
+          <span>✨ 自由 AI 创世</span>
+        </button>
       </div>
 
       {/* Messages Stream Log */}
@@ -251,7 +246,7 @@ export const DMConsole: React.FC<DMConsoleProps> = ({
               {/* Generate AI Art Card for DM narration */}
               {msg.sender === 'DM' && onGenerateArtForNarration && (
                 <div className="mt-3 pt-2 border-t border-slate-800/60 flex items-center justify-between text-[11px]">
-                  <span className="text-slate-500 font-mono">🎨 会员专属AI 场景画卷功能</span>
+                  <span className="text-slate-500 font-mono">🎨 AI 场景画卷</span>
                   <button
                     onClick={() => onGenerateArtForNarration(currentLocation?.name || '未知区域', msg.text)}
                     className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-950 hover:bg-indigo-900 text-indigo-300 border border-indigo-500/30 font-bold transition cursor-pointer hover:border-indigo-400"
@@ -269,7 +264,7 @@ export const DMConsole: React.FC<DMConsoleProps> = ({
           <div className="flex flex-col items-start">
             <div className="flex items-center gap-2 text-[11px] text-amber-400 font-mono mb-1">
               <Sparkles className="w-3.5 h-3.5 animate-spin" />
-              <span>DM 正结合艾尔德兰永恒因果律推演剧情中...</span>
+              <span>DM 正结合当前世界宪法与绝对公理推演剧情中...</span>
             </div>
             <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl rounded-tl-none text-xs text-slate-400 animate-pulse">
               地下城主正在投掷暗骰、调取 NPC 动机、推进因果压力...
@@ -283,29 +278,11 @@ export const DMConsole: React.FC<DMConsoleProps> = ({
       {/* Character Creation & Quick Action Pills */}
       {!isCharacterCreated ? (
         <div className="px-3 sm:px-6 py-2 sm:py-2.5 bg-slate-950/95 border-t border-slate-800/80 space-y-1.5 sm:space-y-2 text-[10px] sm:text-[11px]">
-          {/* World Preset Selection Row */}
-          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-1">
-            <span className="text-amber-400 font-bold whitespace-nowrap font-mono flex items-center gap-1 mr-0.5 shrink-0">
-              <Compass className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-400 animate-pulse" />
-              1. 优先选世界观:
-            </span>
-            {worldPresets.map((wp, idx) => (
-              <button
-                key={`wp-${idx}`}
-                onClick={() => handleSend(wp.text)}
-                disabled={isDMProcessing}
-                className="px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-md bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 transition whitespace-nowrap cursor-pointer disabled:opacity-50 font-medium"
-              >
-                {wp.label}
-              </button>
-            ))}
-          </div>
-
           {/* Onboarding Steps Shortcuts */}
-          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pt-1 border-t border-slate-800/60 pb-0.5">
+          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-0.5">
             <span className="text-slate-300 font-bold whitespace-nowrap font-mono flex items-center gap-1 mr-0.5 shrink-0">
               <Sparkles className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-indigo-400" />
-              2. 创角要素逐步选:
+              角色要素逐步输入:
             </span>
             {step1Names.map((item, idx) => (
               <button
@@ -337,23 +314,13 @@ export const DMConsole: React.FC<DMConsoleProps> = ({
                 3. {item}
               </button>
             ))}
-            {step4Styles.map((item, idx) => (
-              <button
-                key={`s4-${idx}`}
-                onClick={() => handleSend(item)}
-                disabled={isDMProcessing}
-                className="px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-md bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 border border-sky-500/20 transition whitespace-nowrap cursor-pointer disabled:opacity-50"
-              >
-                4. {item}
-              </button>
-            ))}
           </div>
 
           {/* Full Templates */}
           <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto scrollbar-none pt-1 border-t border-slate-800/60">
             <span className="text-slate-400 whitespace-nowrap font-mono flex items-center gap-1 shrink-0">
               <Compass className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-indigo-400" />
-              一键创角模版:
+              快速创角模版:
             </span>
             {characterPresets.map((preset, idx) => (
               <button
@@ -418,7 +385,7 @@ export const DMConsole: React.FC<DMConsoleProps> = ({
             type="text"
             value={inputAction}
             onChange={(e) => setInputAction(e.target.value)}
-            placeholder="对 DM 输入行动 (如: 向掌柜打听矿坑怪事...)"
+            placeholder="对 DM 输入行动 (如: 打听古迹怪事、探索山谷...)"
             disabled={isDMProcessing}
             className="flex-1 bg-slate-900 border border-slate-800 focus:border-amber-500/50 rounded-xl px-3 sm:px-4 py-2 sm:py-3 text-xs text-slate-100 placeholder-slate-500 outline-none transition"
           />

@@ -3,6 +3,7 @@ import { WorldCreationRequest } from './worldCreationRequest';
 import { WorldProfile } from '../worldProfile/worldProfileTypes';
 import { WorldAxiom } from './worldAxiomTypes';
 import { DeterministicIdFactory } from './deterministicIdFactory';
+import { ZodWorldProfileOutput } from './zodSchemas';
 
 export interface ProfileGeneratorOutput {
   profile: WorldProfile;
@@ -16,12 +17,23 @@ export class WorldProfileGenerator {
   ): Promise<ProfileGeneratorOutput> {
     const apiKey = process.env.GEMINI_API_KEY;
 
+    // Merge required and forbidden concepts
+    const requiredConcepts = Array.from(
+      new Set([...(request.constraints?.requiredElements || [])])
+    ).map((s) => s.trim()).filter(Boolean);
+
+    const forbiddenConcepts = Array.from(
+      new Set([...(request.constraints?.forbiddenElements || [])])
+    ).map((s) => s.trim()).filter(Boolean);
+
     if (apiKey && apiKey !== 'MY_GEMINI_API_KEY') {
       try {
         const ai = new GoogleGenAI({ apiKey });
-        const prompt = `You are an AI World Constitution Architect. Create a world profile and world axioms for a new tabletop RPG based on the user vision and constraints.
+        const prompt = `You are an AI World Constitution Architect. Create a world profile and world axioms for a new RPG based on the user vision and constraints.
 User Vision: ${request.userVision}
 Constraints: ${JSON.stringify(request.constraints || {})}
+Required Concepts (MUST include): ${JSON.stringify(requiredConcepts)}
+Forbidden Concepts (MUST NOT include): ${JSON.stringify(forbiddenConcepts)}
 
 Return JSON ONLY matching this structure:
 {
@@ -87,8 +99,10 @@ Return JSON ONLY matching this structure:
 
         const text = response.text;
         if (text) {
-          const parsed = JSON.parse(text);
-          return this.mapParsedToProfileOutput(parsed, request, idFactory, 'gemini-2.5-flash-v1');
+          const rawParsed = JSON.parse(text);
+          const validated = ZodWorldProfileOutput.safeParse(rawParsed);
+          const parsedData = validated.success ? validated.data : rawParsed;
+          return this.mapParsedToProfileOutput(parsedData, request, idFactory, 'gemini-2.5-flash-v1', requiredConcepts, forbiddenConcepts);
         }
       } catch (err) {
         console.warn('[WorldProfileGenerator] AI generation failed or timed out. Falling back to local generator.', err);
@@ -96,22 +110,27 @@ Return JSON ONLY matching this structure:
     }
 
     // Local deterministic fallback
-    return this.generateLocalFallback(request, idFactory);
+    return this.generateLocalFallback(request, idFactory, requiredConcepts, forbiddenConcepts);
   }
 
   private static mapParsedToProfileOutput(
     parsed: any,
     request: WorldCreationRequest,
     idFactory: DeterministicIdFactory,
-    generatorVersion: string
+    generatorVersion: string,
+    requiredConcepts: string[],
+    forbiddenConcepts: string[]
   ): ProfileGeneratorOutput {
     const worldId = request.worldId;
+
+    const mergedAllowed = Array.from(new Set([...(parsed.allowedConcepts || []), ...requiredConcepts]));
+    const mergedForbidden = Array.from(new Set([...(parsed.forbiddenConcepts || []), ...forbiddenConcepts]));
 
     const profile: WorldProfile = {
       world_id: worldId,
       profile_version: 1,
-      display_name: parsed.displayName || '未名异界',
-      short_pitch: parsed.shortPitch || '探寻这个奇幻世界的深层秘密。',
+      display_name: parsed.displayName || '未名新界',
+      short_pitch: parsed.shortPitch || '探索这个规则独具一格的世界。',
       world_description: parsed.worldDescription || `${request.userVision}。这是一个规则独特、包罗万象的崭新世界。`,
       genre_labels: parsed.genreLabels || request.constraints?.culturalInfluences || ['DYNAMIC'],
       tone_labels: parsed.toneLabels || (request.constraints?.tone ? [request.constraints.tone] : ['神秘']),
@@ -129,21 +148,21 @@ Return JSON ONLY matching this structure:
       geography_model: parsed.geographyModel || '多元地貌与聚落分布。',
       naming_conventions: parsed.namingConventions || {
         personalNames: '地域风格名字',
-        placeNames: '自然与历史命名',
+        placeNames: '地理特征命名',
         organizationNames: '势力与功能命名',
         titles: '尊称与职业',
       },
-      terminology: parsed.terminology || {
-        currencyTerms: ['通用币'],
-        energyTerms: ['本源能'],
-        professionTerms: ['探索者', '学者'],
-        factionTerms: ['领主公会'],
-        settlementTerms: ['聚落', '卫城'],
-        wildernessTerms: ['荒野'],
-        creatureTerms: ['异兽'],
-        artifactTerms: ['遗物'],
-        socialRankTerms: ['公民'],
-        conflictTerms: ['争端'],
+      terminology: {
+        currencyTerms: parsed.terminology?.currencyTerms?.length ? parsed.terminology.currencyTerms : ['通用金贝'],
+        energyTerms: parsed.terminology?.energyTerms?.length ? parsed.terminology.energyTerms : ['本源能'],
+        professionTerms: parsed.terminology?.professionTerms?.length ? parsed.terminology.professionTerms : ['行客', '学者'],
+        factionTerms: parsed.terminology?.factionTerms?.length ? parsed.terminology.factionTerms : ['自治同盟'],
+        settlementTerms: parsed.terminology?.settlementTerms?.length ? parsed.terminology.settlementTerms : ['聚落', '枢纽'],
+        wildernessTerms: parsed.terminology?.wildernessTerms?.length ? parsed.terminology.wildernessTerms : ['荒野', '遗迹'],
+        creatureTerms: parsed.terminology?.creatureTerms?.length ? parsed.terminology.creatureTerms : ['原生异兽', '异种生灵'],
+        artifactTerms: parsed.terminology?.artifactTerms?.length ? parsed.terminology.artifactTerms : ['信物', '旧器'],
+        socialRankTerms: parsed.terminology?.socialRankTerms?.length ? parsed.terminology.socialRankTerms : ['平民', '长老'],
+        conflictTerms: parsed.terminology?.conflictTerms?.length ? parsed.terminology.conflictTerms : ['暗流', '争端'],
       },
       narrative_style: parsed.narrativeStyle || {
         narratorRole: '客观记录者',
@@ -151,8 +170,8 @@ Return JSON ONLY matching this structure:
         proseRules: ['生动描绘', '保持克制'],
         prohibitedStylePatterns: ['滥用现代俚语'],
       },
-      allowed_concepts: parsed.allowedConcepts || request.constraints?.requiredElements || ['探索', '生存', '解谜'],
-      forbidden_concepts: parsed.forbiddenConcepts || request.constraints?.forbiddenElements || [],
+      allowed_concepts: mergedAllowed.length ? mergedAllowed : ['探索', '生存'],
+      forbidden_concepts: mergedForbidden,
       starting_scope: request.constraints?.startingScale || 'LOCAL',
       user_vision: request.userVision,
       generation_seed: request.generationSeed,
@@ -177,20 +196,25 @@ Return JSON ONLY matching this structure:
 
   private static generateLocalFallback(
     request: WorldCreationRequest,
-    idFactory: DeterministicIdFactory
+    idFactory: DeterministicIdFactory,
+    requiredConcepts: string[],
+    forbiddenConcepts: string[]
   ): ProfileGeneratorOutput {
     const worldId = request.worldId;
     const visionSnippet = request.userVision.substring(0, 30);
 
+    const mergedAllowed = Array.from(new Set([...requiredConcepts, '探索', '求真']));
+    const mergedForbidden = Array.from(new Set([...forbiddenConcepts]));
+
     const profile: WorldProfile = {
       world_id: worldId,
       profile_version: 1,
-      display_name: `创世之域 (${visionSnippet.substring(0, 10)})`,
+      display_name: `${visionSnippet.substring(0, 8)}之界`,
       short_pitch: '基于用户构想建立的独立动态世界。',
       world_description: `${request.userVision}。在这个世界中，自然法则与文明秩序正交织出独特的历史篇章，各方势力在迷雾中展开角逐。`,
-      genre_labels: ['DYNAMIC', 'FANTASY'],
+      genre_labels: ['DYNAMIC'],
       tone_labels: request.constraints?.tone ? [request.constraints.tone] : ['壮丽', '神秘'],
-      cultural_influences: request.constraints?.culturalInfluences || ['古风', '异域'],
+      cultural_influences: request.constraints?.culturalInfluences || ['多元文化'],
       cosmology: '天地分立，万物受本源法则驱使。',
       metaphysics: '精神与物质通过秩序流向彼此转换。',
       power_system: request.constraints?.supernaturalLevel || '超自然灵气与技艺结合体系',
@@ -203,21 +227,21 @@ Return JSON ONLY matching this structure:
       technology_model: request.constraints?.technologyLevel || '手工工坊与古代机关术',
       geography_model: '山川险隘、河流聚落与未知荒野。',
       naming_conventions: {
-        personalNames: '常用古典自然名',
-        placeNames: '地理特征名',
-        organizationNames: '同盟与社团',
-        titles: '尊称与头衔',
+        personalNames: '古典与自然结合名',
+        placeNames: '地理与功能特征名',
+        organizationNames: '同盟与社团名',
+        titles: '尊称与职能',
       },
       terminology: {
-        currencyTerms: ['金铢', '银贝'],
-        energyTerms: ['灵韵', '源能'],
+        currencyTerms: ['通用币', '晶贝'],
+        energyTerms: ['原能', '脉理'],
         professionTerms: ['行客', '学者', '匠人'],
-        factionTerms: ['星辉同盟', '荒原猎团'],
-        settlementTerms: ['石桥镇', '风谷城'],
-        wildernessTerms: ['迷雾森林', '裂谷废墟'],
-        creatureTerms: ['林地兽', '深谷异种'],
-        artifactTerms: ['古旧符石', '精工短剑'],
-        socialRankTerms: ['平民', '领主'],
+        factionTerms: ['原野联盟', '星阁公会'],
+        settlementTerms: ['前哨镇', '云都'],
+        wildernessTerms: ['迷雾野外', '废墟遗迹'],
+        creatureTerms: ['原野兽类', '异变生灵'],
+        artifactTerms: ['古旧符石', '精工兵刃'],
+        socialRankTerms: ['公民', '长老'],
         conflictTerms: ['暗流争端'],
       },
       narrative_style: {
@@ -226,12 +250,12 @@ Return JSON ONLY matching this structure:
         proseRules: ['注重环境烘托', '展现势力互动'],
         prohibitedStylePatterns: ['禁止堆砌无关词藻'],
       },
-      allowed_concepts: request.constraints?.requiredElements || ['探索', '求真', '阵营冲突'],
-      forbidden_concepts: request.constraints?.forbiddenElements || [],
+      allowed_concepts: mergedAllowed,
+      forbidden_concepts: mergedForbidden,
       starting_scope: request.constraints?.startingScale || 'LOCAL',
       user_vision: request.userVision,
       generation_seed: request.generationSeed,
-      generator_version: 'local-minimal-v1',
+      generator_version: 'local-dynamic-v1',
       created_at_epoch: 1,
       updated_at_epoch: 1,
     };

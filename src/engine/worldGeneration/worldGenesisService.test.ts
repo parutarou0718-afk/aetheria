@@ -71,4 +71,56 @@ describe('WorldGenesisService Dynamic Creation Engine', () => {
     const loadedAxioms = await WorldRepository.getWorldAxioms(worldId);
     expect(loadedAxioms.length).toBeGreaterThanOrEqual(4);
   });
+
+  it('should enforce user required and forbidden concepts in world genesis', async () => {
+    const worldId = 'world-test-constraints';
+    const request: WorldCreationRequest = {
+      worldId,
+      userVision: '一个关于浮空飞艇与浮空矿岛的大陆',
+      constraints: {
+        required_concepts: ['精金符文', '悬赏令'],
+        forbidden_concepts: ['现代枪械', '赛博智脑'],
+      },
+      generationSeed: 88888,
+    };
+
+    const result = await WorldGenesisService.createDynamicWorld(request);
+
+    expect(result.profile.required_concepts).toContain('精金符文');
+    expect(result.profile.required_concepts).toContain('悬赏令');
+    expect(result.profile.forbidden_concepts).toContain('现代枪械');
+    expect(result.profile.forbidden_concepts).toContain('赛博智脑');
+
+    // Verify required concepts injected into world facts
+    const hasRequiredFact = result.template.facts.some((f) =>
+      f.statement.includes('精金符文') || f.statement.includes('悬赏令')
+    );
+    expect(hasRequiredFact).toBe(true);
+
+    // Verify no forbidden concepts in character titles or location descriptions
+    const allText = [
+      ...result.template.characters.map((c) => c.name + c.title + (c.species || '')),
+      ...result.template.locations.map((l) => l.name + l.description),
+    ].join(' ');
+
+    expect(allText).not.toContain('现代枪械');
+    expect(allText).not.toContain('赛博智脑');
+  });
+
+  it('should generate profile-driven characters without falling back to hardcoded Human Explorer', async () => {
+    const worldId = 'world-test-repair';
+    const request: WorldCreationRequest = {
+      worldId,
+      userVision: '一个全员硅基龙族的远古熔岩战界',
+      generationSeed: 77777,
+    };
+
+    const result = await WorldGenesisService.createDynamicWorld(request);
+
+    // Verify PC species is derived or profile-appropriate, not hardcoded
+    const pc = result.template.characters.find((c) => c.type === 'PC');
+    expect(pc).toBeDefined();
+    expect(pc?.title).not.toBe('人类探索者');
+    expect(pc?.species).not.toBe('普通人类');
+  });
 });
