@@ -49,6 +49,8 @@ export const WorldGenesisModal: React.FC<WorldGenesisModalProps> = ({ isOpen, on
           userVision: userVision.trim(),
           worldId: 'world-snapshot-001',
           constraints: {
+            requiredElements: reqList,
+            forbiddenElements: forbList,
             required_concepts: reqList,
             forbidden_concepts: forbList,
           },

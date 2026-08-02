@@ -222,8 +222,8 @@ export class WorldDataStore {
       id: 'world-snapshot-001',
       epoch: 1,
       created_at: new Date().toISOString(),
-      world_name: '艾尔德兰 (Eldlan)',
-      world_description: '一个处于蒸汽与魔导工业革命交界处的古老大陆。铁冠城掌握王国命脉，而暗流在阴影中汹涌。',
+      world_name: '原初界域 (Genesis Realm)',
+      world_description: '一个蕴含无尽法则与历史秘辛的未定大千世界。势力交错，暗流汹涌，等待创世与探索。',
       seed: 42,
       world_facts_count: 0,
       characters_count: 0,
@@ -245,8 +245,8 @@ export class WorldDataStore {
       id: 'world-snapshot-001',
       epoch: 1,
       created_at: new Date().toISOString(),
-      world_name: '艾尔德兰 (Eldlan)',
-      world_description: '一个处于蒸汽与魔导工业革命交界处的古老大陆。铁冠城掌握王国命脉，而暗流在阴影中汹涌。',
+      world_name: '原初界域 (Genesis Realm)',
+      world_description: '一个蕴含无尽法则与历史秘辛的未定大千世界。势力交错，暗流汹涌，等待创世与探索。',
       seed: 42,
       world_facts_count: 0,
       characters_count: 0,
@@ -463,7 +463,7 @@ export class WorldDataStore {
       age: 23,
       location_id: 'loc-tavern',
       status: 'ALIVE',
-      goal: { primary: '踏上艾尔德兰大陆，寻找属于自己的宿命与委托', secondary: [] },
+      goal: { primary: '踏上原初界域大陆，寻找属于自己的宿命与委托', secondary: [] },
       fear: '未知',
       personality: ['待塑造'],
       attributes: { hp: 100, max_hp: 100, mp: 60, max_mp: 60, strength: 10, dexterity: 10, intelligence: 10, charisma: 10 },
@@ -661,7 +661,7 @@ export class WorldDataStore {
       layer: 'layer_4_cosmic_illusions',
       layer_name: '宇宙假象',
       exists: true,
-      true_nature: '艾尔德兰大陆的时间并非线性流逝，每当文明达到工业巅峰，天灾因果树便会重启这个世界。',
+      true_nature: '本原初界域的时间并非线性流逝，每当文明达到巅峰，天灾因果树便会重启这个世界。',
       revealed: false,
       revealed_to_ids: [],
       locked_at_epoch: 1,
@@ -729,7 +729,7 @@ export class WorldDataStore {
     this.events.push({
       id: 'evt-init',
       type: 'DISCOVERY',
-      description: '【世界纪元开启】艾尔德兰世界 Epoch 1 启动。铁冠城高炉轰鸣，古矿坑深处异动频发。',
+      description: '【世界纪元开启】原初界域 Epoch 1 启动。四周原初气息震荡，未知与机遇在此交汇。',
       location_id: 'loc-capital',
       involved_entity_ids: ['pc-player', 'npc-old-lo', 'npc-lilith', 'npc-elwin'],
       cause: { type: 'WORLD_INIT' },
@@ -943,17 +943,17 @@ export class WorldDataStore {
         ];
       }
     } else {
-      this.snapshot.world_name = '艾尔德兰 (Eldlan)';
-      this.snapshot.world_description = '一个处于蒸汽与魔导工业革命交界处的古老大陆。铁冠城掌握王国命脉，而暗流在阴影中汹涌。';
+      this.snapshot.world_name = '原初界域 (Genesis Realm)';
+      this.snapshot.world_description = '一个充满未解谜团与宏大秩序的初始世界。各大势力掌握区域命脉，暗流在阴影中涌动。';
 
       if (tav) {
-        tav.name = '红叶雇佣兵酒馆 (Redleaf Tavern)';
-        tav.description = '拂晓荒村最热闹的憩息之地。橡木吧台散发着麦芽酒与烤肉的香气，喧嚷的雇佣兵、流浪商人与老村长常在此小酌，墙上挂着满满的公会委托悬赏板。';
-        tav.economy.trade_goods = ['黑麦啤酒', '风干烤肉', '雇佣情报'];
+        tav.name = '边境原初驿站 (Pioneer Outpost)';
+        tav.description = '边境最热闹的憩息之地。桌椅散发着风干木材与热茶的香气，往来行客常在此小酌，墙上挂着告示委托。';
+        tav.economy.trade_goods = ['黑麦大麦', '热茶', '旅途情报'];
         tav.features = [
-          { name: '酒馆橡木吧台', description: '热气腾腾的黑麦啤酒与香浓炖汤，是打听情报与接取委托的绝佳场所。', state: 'INTACT' },
-          { name: '公会雇佣兵悬赏板', description: '张贴着附近打杂、清剿魔物或搜寻遗迹失物的悬赏告示。', state: 'INTACT' },
-          { name: '靠窗的温暖木桌', description: '旅人与冒险者歇脚的地方，十分适合静下心整理装备与规划行程。', state: 'INTACT' },
+          { name: '集镇吧台', description: '热气腾腾的茶水与风味炖汤，是打听情报的绝佳场所。', state: 'INTACT' },
+          { name: '委托告示板', description: '张贴着附近的清剿委托或搜寻遗迹失物的告示。', state: 'INTACT' },
+          { name: '靠窗的温暖木桌', description: '旅人与探索者歇脚的地方，十分适合静下心整理装备与规划行程。', state: 'INTACT' },
         ];
       }
       if (df) {

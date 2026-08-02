@@ -6,6 +6,7 @@ import { TruthsEngine } from './truthsEngine';
 import { Location } from '../types';
 import { recorder } from './recorder/recorder';
 import { StateChangeProposal } from './recorder/changeSchemas';
+import { TransactionService } from './timeline/transactionService';
 
 let genAIClient: GoogleGenAI | null = null;
 
@@ -154,7 +155,7 @@ ${axiomsFormatted}
 }`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3.6-flash',
         contents: systemPrompt,
         config: {
           responseMimeType: 'application/json',
@@ -253,23 +254,38 @@ ${axiomsFormatted}
         updatesSummary.push(`🗺️ DM 动态演化出新地图领域: 【${newLocObj.name}】`);
       }
 
-      // Apply location move via proposal
+      // Apply location move via TransactionService travel proposals
       if (parsed.targetLocationId && pc) {
-        proposals.push({
-          id: `prop-move-${Date.now()}`,
-          operation: 'MOVE_CHARACTER',
-          entityType: 'CHARACTER',
-          entityId: pc.id,
-          payload: { characterId: pc.id, targetLocationId: parsed.targetLocationId, bypassConnectivity: true },
-          effectiveEpoch: currentEpoch,
-          preconditions: [],
-          source: { type: 'PLAYER_ACTION' },
-        });
-        const locName = globalWorld.locations.get(parsed.targetLocationId)?.name || parsed.targetLocationId;
-        updatesSummary.push(`📍 移动到了区域: 【${locName}】`);
+        try {
+          const travelPlan = await TransactionService.buildTravelPlanProposals({
+            worldId: globalWorld.snapshot.id || 'world-snapshot-001',
+            actorId: pc.id,
+            destinationLocationId: parsed.targetLocationId,
+            startEpoch: currentEpoch,
+          });
+          proposals.push(...travelPlan.proposals);
+          const locName = globalWorld.locations.get(parsed.targetLocationId)?.name || parsed.targetLocationId;
+          updatesSummary.push(`📍 开启旅程: 【${locName}】(预计耗时 ${travelPlan.totalEpochs} 周期)`);
+        } catch (_) {
+          proposals.push({
+            id: `prop-move-${Date.now()}`,
+            operation: 'MOVE_CHARACTER',
+            entityType: 'CHARACTER',
+            entityId: pc.id,
+            payload: { characterId: pc.id, targetLocationId: parsed.targetLocationId, bypassConnectivity: true },
+            effectiveEpoch: currentEpoch,
+            preconditions: [],
+            source: { type: 'PLAYER_ACTION' },
+          });
+          const locName = globalWorld.locations.get(parsed.targetLocationId)?.name || parsed.targetLocationId;
+          updatesSummary.push(`📍 移动到了区域: 【${locName}】`);
+        }
       }
 
-      // Apply HP/MP/Gold deltas
+      // Apply HP/MP/Gold deltas with profile-driven labels
+      const currencyTerm = globalWorld.profile?.terminology?.currencyTerms?.[0] || '通用币';
+      const energyTerm = globalWorld.profile?.terminology?.energyTerms?.[0] || '能量值 MP';
+
       if (pc) {
         if (parsed.hpDelta || parsed.mpDelta) {
           proposals.push({
@@ -283,7 +299,7 @@ ${axiomsFormatted}
             source: { type: 'LLM' },
           });
           if (parsed.hpDelta) updatesSummary.push(`❤️ 生命值 HP ${parsed.hpDelta > 0 ? '+' : ''}${parsed.hpDelta}`);
-          if (parsed.mpDelta) updatesSummary.push(`✨ 魔力值 MP ${parsed.mpDelta > 0 ? '+' : ''}${parsed.mpDelta}`);
+          if (parsed.mpDelta) updatesSummary.push(`✨ ${energyTerm} ${parsed.mpDelta > 0 ? '+' : ''}${parsed.mpDelta}`);
         }
 
         if (parsed.goldDelta) {
@@ -297,7 +313,7 @@ ${axiomsFormatted}
             preconditions: [],
             source: { type: 'LLM' },
           });
-          updatesSummary.push(`🪙 资源 ${parsed.goldDelta > 0 ? '+' : ''}${parsed.goldDelta}`);
+          updatesSummary.push(`🪙 ${currencyTerm} ${parsed.goldDelta > 0 ? '+' : ''}${parsed.goldDelta}`);
         }
       }
 

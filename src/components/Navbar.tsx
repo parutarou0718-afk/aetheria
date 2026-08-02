@@ -61,12 +61,12 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
             <div>
               <h1 className="font-bold text-xs xs:text-sm sm:text-lg tracking-wide text-slate-100 flex items-center gap-1 sm:gap-2">
-                <span className="whitespace-nowrap">艾尔德兰</span>
+                <span className="whitespace-nowrap">Aetheria World</span>
                 <span className="text-[9px] sm:text-xs font-mono px-1 sm:px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 whitespace-nowrap">
                   AI DM
                 </span>
               </h1>
-              <p className="text-[10px] sm:text-xs text-slate-400 hidden sm:block">蒸汽与魔导纪元 • 全进程 AI 叙事驱动</p>
+              <p className="text-[10px] sm:text-xs text-slate-400 hidden sm:block">全进程 AI 叙事驱动 • 动态创世</p>
             </div>
           </div>
 

@@ -96,13 +96,20 @@ Return JSON ONLY matching structure:
   "genesisEventDescription": "string"
 }`;
 
-        const response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
-          contents: prompt,
-          config: {
-            responseMimeType: 'application/json',
-          },
-        });
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('AI Request timed out after 4000ms')), 4000)
+        );
+
+        const response = (await Promise.race([
+          ai.models.generateContent({
+            model: 'gemini-3.6-flash',
+            contents: prompt,
+            config: {
+              responseMimeType: 'application/json',
+            },
+          }),
+          timeoutPromise,
+        ])) as any;
 
         const text = response.text;
         if (text) {
@@ -227,6 +234,23 @@ Return JSON ONLY matching structure:
       created_at_epoch: 1,
       updated_at_epoch: 1,
     }));
+
+    (profile.allowed_concepts || []).forEach((concept, idx) => {
+      const alreadyMentioned = facts.some((f) => f.statement.includes(concept));
+      if (!alreadyMentioned) {
+        facts.push({
+          id: idFactory.createId('fact', facts.length + idx + 1),
+          statement: `${profile.display_name}存在关键要素：${concept}`,
+          category: 'GEOGRAPHY',
+          confidence: 'CONFIRMED',
+          source: { type: 'OBSERVATION', source_id: firstLocId, epoch_discovered: 1 },
+          related_entity_ids: [firstLocId],
+          is_active: true,
+          created_at_epoch: 1,
+          updated_at_epoch: 1,
+        });
+      }
+    });
 
     // Seeds
     const pcId = characters.find((c) => c.type === 'PC')?.id || characters[0].id;
@@ -423,6 +447,17 @@ Return JSON ONLY matching structure:
         created_at_epoch: 1,
         updated_at_epoch: 1,
       },
+      ...(profile.allowed_concepts || []).map((concept, idx) => ({
+        id: idFactory.createId('fact', idx + 2),
+        statement: `${profile.display_name}关键存在要素：${concept}`,
+        category: 'GEOGRAPHY' as const,
+        confidence: 'CONFIRMED' as const,
+        source: { type: 'OBSERVATION' as const, source_id: locStart.id, epoch_discovered: 1 },
+        related_entity_ids: [locStart.id],
+        is_active: true,
+        created_at_epoch: 1,
+        updated_at_epoch: 1,
+      })),
     ];
 
     const seeds: Seed[] = [

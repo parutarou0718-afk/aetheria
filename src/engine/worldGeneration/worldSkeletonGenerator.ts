@@ -34,7 +34,7 @@ Allowed Concepts: ${JSON.stringify(profile.allowed_concepts)}
 Forbidden Concepts: ${JSON.stringify(profile.forbidden_concepts)}
 
 Requirements:
-1. Generate 3 to 5 locations matching the world's geography and technology. Include at least 1 settlement and 1 wilderness/ruins.
+1. Generate 3 to 5 locations matching the world's geography, scale, and technology.
 2. Generate 4 hidden truths across distinct layers (layer_1_personal_secrets, layer_2_organization_conspiracies, layer_3_world_lies, layer_4_cosmic_illusions).
 3. DO NOT use generic tropes or unrequested placeholders. Match the specific vision and terminology of this world.
 
@@ -65,13 +65,20 @@ Return JSON ONLY matching:
   ]
 }`;
 
-        const response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
-          contents: prompt,
-          config: {
-            responseMimeType: 'application/json',
-          },
-        });
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('AI Request timed out after 4000ms')), 4000)
+        );
+
+        const response = (await Promise.race([
+          ai.models.generateContent({
+            model: 'gemini-3.6-flash',
+            contents: prompt,
+            config: {
+              responseMimeType: 'application/json',
+            },
+          }),
+          timeoutPromise,
+        ])) as any;
 
         const text = response.text;
         if (text) {

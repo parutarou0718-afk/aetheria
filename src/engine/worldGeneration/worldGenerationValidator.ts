@@ -74,7 +74,13 @@ export class WorldGenerationValidator {
     }
 
     // 4. Forbidden Concepts Complete Scan
-    const forbiddenList = (profile.forbidden_concepts || []).map((f) => f.trim().toLowerCase()).filter(Boolean);
+    const forbiddenList = Array.from(
+      new Set([
+        ...(profile.forbidden_concepts || []),
+        ...((profile as any).forbiddenElements || []),
+      ])
+    ).map((f) => f.trim().toLowerCase()).filter(Boolean);
+
     if (forbiddenList.length > 0) {
       const inspectString = (text: string, pathStr: string) => {
         if (!text) return;
@@ -116,7 +122,13 @@ export class WorldGenerationValidator {
     }
 
     // 5. Required Concepts Complete Scan
-    const requiredList = (profile.allowed_concepts || []).map((r) => r.trim().toLowerCase()).filter(Boolean);
+    const requiredList = Array.from(
+      new Set([
+        ...(profile.allowed_concepts || []),
+        ...((profile as any).required_concepts || []),
+        ...((profile as any).requiredElements || []),
+      ])
+    ).map((r) => r.trim().toLowerCase()).filter(Boolean);
     if (requiredList.length > 0) {
       // Gather all text in world
       const allWorldText = [

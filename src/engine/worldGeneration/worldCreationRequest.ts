@@ -8,6 +8,8 @@ export interface WorldCreationConstraints {
 
   requiredElements?: string[];
   forbiddenElements?: string[];
+  required_concepts?: string[];
+  forbidden_concepts?: string[];
 
   playerFantasy?: string;
   startingScale?: StartingScale;
@@ -45,9 +47,16 @@ export function validateWorldCreationRequest(request: WorldCreationRequest): Req
   }
 
   if (request.constraints) {
-    const { requiredElements = [], forbiddenElements = [] } = request.constraints;
-    const reqNormalized = new Set(requiredElements.map((s) => s.trim().toLowerCase()).filter(Boolean));
-    const forbNormalized = new Set(forbiddenElements.map((s) => s.trim().toLowerCase()).filter(Boolean));
+    const requiredList = [
+      ...(request.constraints.requiredElements || []),
+      ...(request.constraints.required_concepts || []),
+    ];
+    const forbiddenList = [
+      ...(request.constraints.forbiddenElements || []),
+      ...(request.constraints.forbidden_concepts || []),
+    ];
+    const reqNormalized = new Set(requiredList.map((s) => s.trim().toLowerCase()).filter(Boolean));
+    const forbNormalized = new Set(forbiddenList.map((s) => s.trim().toLowerCase()).filter(Boolean));
 
     for (const reqItem of reqNormalized) {
       if (forbNormalized.has(reqItem)) {

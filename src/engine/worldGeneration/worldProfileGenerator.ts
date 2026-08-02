@@ -19,11 +19,17 @@ export class WorldProfileGenerator {
 
     // Merge required and forbidden concepts
     const requiredConcepts = Array.from(
-      new Set([...(request.constraints?.requiredElements || [])])
+      new Set([
+        ...(request.constraints?.requiredElements || []),
+        ...(request.constraints?.required_concepts || []),
+      ])
     ).map((s) => s.trim()).filter(Boolean);
 
     const forbiddenConcepts = Array.from(
-      new Set([...(request.constraints?.forbiddenElements || [])])
+      new Set([
+        ...(request.constraints?.forbiddenElements || []),
+        ...(request.constraints?.forbidden_concepts || []),
+      ])
     ).map((s) => s.trim()).filter(Boolean);
 
     if (apiKey && apiKey !== 'MY_GEMINI_API_KEY') {
@@ -89,20 +95,27 @@ Return JSON ONLY matching this structure:
   ]
 }`;
 
-        const response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
-          contents: prompt,
-          config: {
-            responseMimeType: 'application/json',
-          },
-        });
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('AI Request timed out after 4000ms')), 4000)
+        );
+
+        const response = (await Promise.race([
+          ai.models.generateContent({
+            model: 'gemini-3.6-flash',
+            contents: prompt,
+            config: {
+              responseMimeType: 'application/json',
+            },
+          }),
+          timeoutPromise,
+        ])) as any;
 
         const text = response.text;
         if (text) {
           const rawParsed = JSON.parse(text);
           const validated = ZodWorldProfileOutput.safeParse(rawParsed);
           const parsedData = validated.success ? validated.data : rawParsed;
-          return this.mapParsedToProfileOutput(parsedData, request, idFactory, 'gemini-2.5-flash-v1', requiredConcepts, forbiddenConcepts);
+          return this.mapParsedToProfileOutput(parsedData, request, idFactory, 'gemini-3.6-flash-v1', requiredConcepts, forbiddenConcepts);
         }
       } catch (err) {
         console.warn('[WorldProfileGenerator] AI generation failed or timed out. Falling back to local generator.', err);

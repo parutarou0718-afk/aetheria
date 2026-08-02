@@ -104,7 +104,8 @@ export class NPCCognitionEngine {
       globalWorld.totalLLMCalls++;
       globalWorld.llmCallsThisEpoch++;
 
-      const systemPrompt = `你是在 AI-Native RPG 世界【艾尔德兰】中扮演 NPC 的深度角色扮演引擎。
+      const worldName = globalWorld.snapshot.world_name || '原初界域';
+      const systemPrompt = `你是在 AI-Native RPG 世界【${worldName}】中扮演 NPC 的深度角色扮演引擎。
 扮演角色信息:
 - 姓名: ${npc.name} (${npc.title})
 - 种族/年龄: ${npc.species}, ${npc.age}岁

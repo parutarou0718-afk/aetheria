@@ -164,15 +164,20 @@ export class CausalityEngine {
         progress: s.progress,
       }));
 
+      const orgsSummary = Array.from(globalWorld.organizations.values())
+        .map((o) => `${o.name} (${o.type})`)
+        .join(', ');
+
       const response = await ai.models.generateContent({
         model: 'gemini-3.6-flash',
         contents: `你是一个 AI-Native 永恒世界 RPG 的【因果律推演引擎】。
-当前世界: 艾尔德兰 (Eldlan)
+当前世界: ${globalWorld.snapshot.world_name || '原初界域'}
+世界设定: ${globalWorld.snapshot.world_description || '未知世界'}
 当前纪元 (Epoch): ${globalWorld.snapshot.epoch}
 活跃种子 Seed: ${JSON.stringify(activeSeeds, null, 2)}
-主要势力: 黑鸦商会 (黑市/走私), 圣光守卫团 (治安/秩序), 矮人老洛 (锻造)
+主要势力: ${orgsSummary || '暂无主要势力'}
 
-请以写实、严谨、充满奇幻魔导工业风格的语气，推演 1-2 段本纪元因果树的深层涟漪 (200字以内)。`,
+请以符合当前世界风格、写实严谨的语气，推演 1-2 段本纪元因果树的深层涟漪 (200字以内)。`,
       });
 
       return response.text || '因果树在静默中伸展枝桠...';

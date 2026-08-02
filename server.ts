@@ -177,35 +177,45 @@ async function startServer() {
     if (action_type === 'TRAVEL' && target_location_id) {
       const targetLoc = globalWorld.locations.get(target_location_id);
       if (targetLoc) {
-        proposals.push({
-          id: `prop-route-move-${Date.now()}`,
-          operation: 'MOVE_CHARACTER',
-          entityType: 'CHARACTER',
-          entityId: char.id,
-          payload: { characterId: char.id, targetLocationId: target_location_id, bypassConnectivity: true },
-          effectiveEpoch: currentEpoch,
-          preconditions: [],
-          source: { type: 'PLAYER_ACTION' },
-        });
+        try {
+          await TransactionService.planTravel({
+            worldId: 'world-snapshot-001',
+            actorId: char.id,
+            destinationLocationId: target_location_id,
+            startEpoch: currentEpoch,
+          });
+        } catch (err: any) {
+          console.warn('[Server] TransactionService.planTravel failed, applying fallback travel proposals:', err.message);
+          proposals.push({
+            id: `prop-route-move-${Date.now()}`,
+            operation: 'MOVE_CHARACTER',
+            entityType: 'CHARACTER',
+            entityId: char.id,
+            payload: { characterId: char.id, targetLocationId: target_location_id, bypassConnectivity: true },
+            effectiveEpoch: currentEpoch,
+            preconditions: [],
+            source: { type: 'PLAYER_ACTION' },
+          });
 
-        proposals.push({
-          id: `prop-route-act-${Date.now()}`,
-          operation: 'SET_CHARACTER_ACTION',
-          entityType: 'CHARACTER',
-          entityId: char.id,
-          payload: {
-            characterId: char.id,
-            action: {
-              type: 'TRAVEL',
-              description: `前往 ${targetLoc.name}`,
-              started_at_epoch: currentEpoch,
-              estimated_end_epoch: currentEpoch + 1,
+          proposals.push({
+            id: `prop-route-act-${Date.now()}`,
+            operation: 'SET_CHARACTER_ACTION',
+            entityType: 'CHARACTER',
+            entityId: char.id,
+            payload: {
+              characterId: char.id,
+              action: {
+                type: 'TRAVEL',
+                description: `前往 ${targetLoc.name}`,
+                started_at_epoch: currentEpoch,
+                estimated_end_epoch: currentEpoch + 1,
+              },
             },
-          },
-          effectiveEpoch: currentEpoch,
-          preconditions: [],
-          source: { type: 'PLAYER_ACTION' },
-        });
+            effectiveEpoch: currentEpoch,
+            preconditions: [],
+            source: { type: 'PLAYER_ACTION' },
+          });
+        }
 
         SchedulerEngine.pushWakeSignal({
           entity_id: char.id,
@@ -320,7 +330,7 @@ async function startServer() {
   // 13.5. AI Adventure Illustration Generation
   app.post('/api/v1/art/generate', (req, res) => {
     const { locationName, narrationSummary } = req.body;
-    const loc = locationName || '艾尔德兰荒野';
+    const loc = locationName || '原初荒野';
     const summary = narrationSummary || '黑夜中的冒险故事在流转';
 
     const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });

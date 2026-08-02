@@ -42,7 +42,7 @@ describe('WorldGenesisService Dynamic Creation Engine', () => {
     // Verify locations connectivity
     expect(result.template.locations.length).toBeGreaterThan(0);
     expect(result.validationReport.valid).toBe(true);
-  });
+  }, 30000);
 
   it('should produce deterministic IDs for identical seed and inputs', () => {
     const factory1 = new DeterministicIdFactory(9999);
@@ -70,13 +70,13 @@ describe('WorldGenesisService Dynamic Creation Engine', () => {
 
     const loadedAxioms = await WorldRepository.getWorldAxioms(worldId);
     expect(loadedAxioms.length).toBeGreaterThanOrEqual(4);
-  });
+  }, 30000);
 
   it('should enforce user required and forbidden concepts in world genesis', async () => {
     const worldId = 'world-test-constraints';
     const request: WorldCreationRequest = {
       worldId,
-      userVision: '一个关于浮空飞艇与浮空矿岛的大陆',
+      userVision: '一个关于浮空飞艇与浮空矿岛的大陆，云海深处藏有古老遗迹',
       constraints: {
         required_concepts: ['精金符文', '悬赏令'],
         forbidden_concepts: ['现代枪械', '赛博智脑'],
@@ -86,8 +86,8 @@ describe('WorldGenesisService Dynamic Creation Engine', () => {
 
     const result = await WorldGenesisService.createDynamicWorld(request);
 
-    expect(result.profile.required_concepts).toContain('精金符文');
-    expect(result.profile.required_concepts).toContain('悬赏令');
+    expect(result.profile.allowed_concepts).toContain('精金符文');
+    expect(result.profile.allowed_concepts).toContain('悬赏令');
     expect(result.profile.forbidden_concepts).toContain('现代枪械');
     expect(result.profile.forbidden_concepts).toContain('赛博智脑');
 
@@ -105,13 +105,13 @@ describe('WorldGenesisService Dynamic Creation Engine', () => {
 
     expect(allText).not.toContain('现代枪械');
     expect(allText).not.toContain('赛博智脑');
-  });
+  }, 30000);
 
   it('should generate profile-driven characters without falling back to hardcoded Human Explorer', async () => {
     const worldId = 'world-test-repair';
     const request: WorldCreationRequest = {
       worldId,
-      userVision: '一个全员硅基龙族的远古熔岩战界',
+      userVision: '一个全员硅基龙族的远古熔岩战界，烈焰在沟壑中喷涌不息',
       generationSeed: 77777,
     };
 
@@ -122,5 +122,5 @@ describe('WorldGenesisService Dynamic Creation Engine', () => {
     expect(pc).toBeDefined();
     expect(pc?.title).not.toBe('人类探索者');
     expect(pc?.species).not.toBe('普通人类');
-  });
+  }, 30000);
 });

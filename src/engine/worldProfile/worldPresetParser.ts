@@ -17,7 +17,7 @@ export class WorldPresetParser {
     if (trimmed.includes('东方修仙') || trimmed.includes('修仙') || trimmed.includes('仙侠') || trimmed.includes('苍穹道界')) {
       return 'XIANXIA';
     }
-    if (trimmed.includes('蒸汽魔导') || trimmed.includes('蒸汽') || trimmed.includes('魔导') || trimmed.includes('艾尔德兰')) {
+    if (trimmed.includes('蒸汽魔导') || trimmed.includes('蒸汽') || trimmed.includes('魔导')) {
       return 'STEAM_ARCANUM';
     }
     if (trimmed.includes('赛博朋克') || trimmed.includes('赛博')) {

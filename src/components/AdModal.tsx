@@ -85,7 +85,7 @@ export const AdModal: React.FC<AdModalProps> = ({
               <Sparkles className="w-6 h-6" />
             </div>
             <h3 className="text-base font-bold text-amber-200">
-              【艾尔德兰·魔法工坊】极品装备与神秘药剂特卖
+              【Aetheria·奇幻工坊】极品装备与神秘药剂特卖
             </h3>
             <p className="text-xs text-slate-300 leading-relaxed">
               支持全自由 AI DM 剧情演化！开通 <span className="text-amber-400 font-bold">9.9元/月 尊享 VIP</span> 即可永久豁免跨天/移动插屏广告，并赠送 <span className="text-indigo-300 font-bold">3次高精 AI 冒险画卷生成额度</span>！
