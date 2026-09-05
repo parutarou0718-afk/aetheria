@@ -1,9 +1,10 @@
-import { GoogleGenAI } from '@google/genai';
 import { WorldProfile } from '../worldProfile/worldProfileTypes';
 import { WorldAxiom } from './worldAxiomTypes';
 import { Location, LocationEdge, HiddenTruth } from '../../types';
 import { DeterministicIdFactory } from './deterministicIdFactory';
 import { ZodSkeletonOutput } from './zodSchemas';
+import { generateJson } from '../llm/llmClient';
+import { WorldSkeletonGenerationError } from '../worldProfile/worldProfileErrors';
 
 export interface SkeletonGeneratorOutput {
   locations: Location[];
@@ -17,13 +18,14 @@ export class WorldSkeletonGenerator {
     axioms: WorldAxiom[],
     idFactory: DeterministicIdFactory
   ): Promise<SkeletonGeneratorOutput> {
-    const apiKey = process.env.GEMINI_API_KEY;
+    const system = [
+      'You are an AI RPG Skeleton Architect. Generate the world map (locations + connections) and hidden truths',
+      'strictly matching the supplied World Profile and Axioms. Never use generic Western-fantasy tropes or',
+      'placeholders that were not requested. The world may be non-Western or radically non-standard, so honor',
+      'its terminology, geography, technology, and the required/forbidden concept lists exactly.',
+    ].join(' ');
 
-    if (apiKey && apiKey !== 'MY_GEMINI_API_KEY') {
-      try {
-        const ai = new GoogleGenAI({ apiKey });
-        const prompt = `You are an AI RPG Skeleton Architect. Generate locations, connections, and hidden truths for the world based strictly on this World Profile and Axioms.
-Display Name: ${profile.display_name}
+    const user = `World Display Name: ${profile.display_name}
 Description: ${profile.world_description}
 Technology: ${profile.technology_model}
 Geography: ${profile.geography_model}
@@ -34,9 +36,12 @@ Allowed Concepts: ${JSON.stringify(profile.allowed_concepts)}
 Forbidden Concepts: ${JSON.stringify(profile.forbidden_concepts)}
 
 Requirements:
-1. Generate 3 to 5 locations matching the world's geography, scale, and technology.
-2. Generate 4 hidden truths across distinct layers (layer_1_personal_secrets, layer_2_organization_conspiracies, layer_3_world_lies, layer_4_cosmic_illusions).
+1. Generate 3 to 5 locations matching the world's geography, scale, and technology. Locations types may be any of:
+   TOWN|CITY|FOREST|CAVE|MOUNTAIN|RUINS|PORT|FORTRESS|TEMPLE|WASTELAND|STATION|VOID|OTHER.
+2. Generate 4 hidden truths across distinct layers:
+   layer_1_personal_secrets, layer_2_organization_conspiracies, layer_3_world_lies, layer_4_cosmic_illusions.
 3. DO NOT use generic tropes or unrequested placeholders. Match the specific vision and terminology of this world.
+4. Do NOT use any Forbidden Concept, anywhere.
 
 Return JSON ONLY matching:
 {
@@ -65,35 +70,43 @@ Return JSON ONLY matching:
   ]
 }`;
 
-        const timeoutPromise = new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('AI Request timed out after 4000ms')), 4000)
+    const parsed = await this.invokeAi(system, user);
+
+    try {
+      const validated = ZodSkeletonOutput.safeParse(parsed);
+      if (!validated.success) {
+        throw new WorldSkeletonGenerationError(
+          `AI returned malformed skeleton JSON: ${this.safeIssue(validated)}`
         );
-
-        const response = (await Promise.race([
-          ai.models.generateContent({
-            model: 'gemini-3.6-flash',
-            contents: prompt,
-            config: {
-              responseMimeType: 'application/json',
-            },
-          }),
-          timeoutPromise,
-        ])) as any;
-
-        const text = response.text;
-        if (text) {
-          const rawParsed = JSON.parse(text);
-          const validated = ZodSkeletonOutput.safeParse(rawParsed);
-          if (validated.success) {
-            return this.buildSkeletonFromParsed(validated.data, profile, axioms, idFactory);
-          }
-        }
-      } catch (err) {
-        console.warn('[WorldSkeletonGenerator] AI skeleton generation failed. Falling back to dynamic profile generator.', err);
       }
+      return this.buildSkeletonFromParsed(validated.data, profile, axioms, idFactory);
+    } catch (err) {
+      if (err instanceof WorldSkeletonGenerationError) throw err;
+      throw new WorldSkeletonGenerationError(
+        `Failed to interpret AI skeleton output: ${(err as Error).message}`
+      );
     }
+  }
 
-    return this.generateProfileDrivenSkeleton(profile, axioms, idFactory);
+  private static async invokeAi(system: string, user: string): Promise<any> {
+    try {
+      return await generateJson(system, user, {
+        timeoutMs: 30000,
+        jsonSchemaHint: 'Return strictly a JSON object with keys "locations" and "hiddenTruths".',
+      });
+    } catch (err) {
+      throw new WorldSkeletonGenerationError(
+        `World skeleton generation failed: ${(err as Error).message}`
+      );
+    }
+  }
+
+  private static safeIssue(result: { error?: any }): string {
+    try {
+      return JSON.stringify(result?.error ?? '');
+    } catch {
+      return 'unknown schema error';
+    }
   }
 
   private static buildSkeletonFromParsed(
@@ -200,178 +213,6 @@ Return JSON ONLY matching:
       evidence_required: Array.isArray(ht.evidenceRequired) && ht.evidenceRequired.length ? ht.evidenceRequired : ['关键线索'],
       evidence_collected: [],
     }));
-
-    return { locations, locationEdges, hiddenTruths };
-  }
-
-  private static generateProfileDrivenSkeleton(
-    profile: WorldProfile,
-    axioms: WorldAxiom[],
-    idFactory: DeterministicIdFactory
-  ): SkeletonGeneratorOutput {
-    const worldId = profile.world_id;
-    const terms = profile.terminology;
-
-    const loc1Name = terms.settlementTerms?.[0] || '第一枢纽';
-    const loc2Name = terms.settlementTerms?.[1] || '核心集市';
-    const loc3Name = terms.wildernessTerms?.[0] || '边界荒原';
-    const loc4Name = terms.wildernessTerms?.[1] || '遗迹地心';
-
-    const loc1Id = idFactory.createId('loc', 'start');
-    const loc2Id = idFactory.createId('loc', 'center');
-    const loc3Id = idFactory.createId('loc', 'wilds');
-    const loc4Id = idFactory.createId('loc', 'ruin');
-
-    const locations: Location[] = [
-      {
-        id: loc1Id,
-        name: loc1Name,
-        type: 'TOWN',
-        description: `这是${profile.display_name}中各方聚拢的起点，供行客修整交流信息。`,
-        status: 'ACTIVE',
-        child_ids: [],
-        connected_to: [loc2Id],
-        population: 80,
-        population_trend: 'STABLE',
-        economy: { primary_industry: 'TRADE', wealth_level: 50, trade_goods: [terms.currencyTerms?.[0] || '物资'], trade_routes: [loc2Id] },
-        security: { crime_rate: 10, guard_presence: 50 },
-        active_events: [],
-        features: [{ name: '信息与修整处', description: '来往旅人歇息与交易的场所', state: 'NORMAL' }],
-        frozen: false,
-        simulation_level: 1,
-        last_simulated_epoch: 1,
-        created_at_epoch: 1,
-        updated_at_epoch: 1,
-      },
-      {
-        id: loc2Id,
-        name: loc2Name,
-        type: 'CITY',
-        description: `繁忙的物资与信息交汇地，流通着各地特产与${terms.currencyTerms?.[0] || '物资'}。`,
-        status: 'ACTIVE',
-        child_ids: [],
-        connected_to: [loc1Id, loc3Id],
-        population: 300,
-        population_trend: 'STABLE',
-        economy: { primary_industry: 'TRADE', wealth_level: 80, trade_goods: [terms.artifactTerms?.[0] || '珍宝'], trade_routes: [loc1Id, loc3Id] },
-        security: { crime_rate: 20, guard_presence: 70 },
-        active_events: [],
-        features: [{ name: '交汇长廊', description: '各方势力设立的办事机构与交易广场', state: 'NORMAL' }],
-        frozen: false,
-        simulation_level: 1,
-        last_simulated_epoch: 1,
-        created_at_epoch: 1,
-        updated_at_epoch: 1,
-      },
-      {
-        id: loc3Id,
-        name: loc3Name,
-        type: 'FOREST',
-        description: `围绕主城区延伸的险峻野外，栖息着${terms.creatureTerms?.[0] || '异种'}，潜藏着未知危险。`,
-        status: 'ACTIVE',
-        child_ids: [],
-        connected_to: [loc2Id, loc4Id],
-        population: 20,
-        population_trend: 'STABLE',
-        economy: { primary_industry: 'GATHERING', wealth_level: 25, trade_goods: ['野外原能'], trade_routes: [loc2Id] },
-        security: { crime_rate: 50, guard_presence: 10 },
-        active_events: [],
-        features: [{ name: '危险栖息带', description: '充满了未被开发的天然资源', state: 'HAZARDOUS' }],
-        frozen: false,
-        simulation_level: 1,
-        last_simulated_epoch: 1,
-        created_at_epoch: 1,
-        updated_at_epoch: 1,
-      },
-      {
-        id: loc4Id,
-        name: loc4Name,
-        type: 'RUIN',
-        description: `藏于深处的古老痕迹，封存着失传的${terms.artifactTerms?.[0] || '古物'}与核心法则。`,
-        status: 'ACTIVE',
-        child_ids: [],
-        connected_to: [loc3Id],
-        population: 0,
-        population_trend: 'STABLE',
-        economy: { primary_industry: 'EXPLORATION', wealth_level: 95, trade_goods: ['核心古物'], trade_routes: [] },
-        security: { crime_rate: 85, guard_presence: 0 },
-        active_events: [],
-        features: [{ name: '古痕核心', description: '封印着本源秘辛的遗迹深处', state: 'DANGEROUS' }],
-        frozen: false,
-        simulation_level: 1,
-        last_simulated_epoch: 1,
-        created_at_epoch: 1,
-        updated_at_epoch: 1,
-      },
-    ];
-
-    const locationEdges: LocationEdge[] = [
-      { id: idFactory.createId('edge', '1-2'), world_id: worldId, from_location_id: loc1Id, to_location_id: loc2Id, distance: 1.0, travel_cost: 1.0, travel_time_epochs: 1, status: 'OPEN' },
-      { id: idFactory.createId('edge', '2-1'), world_id: worldId, from_location_id: loc2Id, to_location_id: loc1Id, distance: 1.0, travel_cost: 1.0, travel_time_epochs: 1, status: 'OPEN' },
-      { id: idFactory.createId('edge', '2-3'), world_id: worldId, from_location_id: loc2Id, to_location_id: loc3Id, distance: 2.0, travel_cost: 2.0, travel_time_epochs: 1, status: 'OPEN' },
-      { id: idFactory.createId('edge', '3-2'), world_id: worldId, from_location_id: loc3Id, to_location_id: loc2Id, distance: 2.0, travel_cost: 2.0, travel_time_epochs: 1, status: 'OPEN' },
-      { id: idFactory.createId('edge', '3-4'), world_id: worldId, from_location_id: loc3Id, to_location_id: loc4Id, distance: 3.5, travel_cost: 3.0, travel_time_epochs: 2, status: 'OPEN' },
-      { id: idFactory.createId('edge', '4-3'), world_id: worldId, from_location_id: loc4Id, to_location_id: loc3Id, distance: 3.5, travel_cost: 3.0, travel_time_epochs: 2, status: 'OPEN' },
-    ];
-
-    const hiddenTruths: HiddenTruth[] = [
-      {
-        id: idFactory.createId('ht', 1),
-        title: `${loc1Name}的古旧结界并非天然形成，而是人为建立的监控机关`,
-        layer: 'layer_1_personal_secrets',
-        layer_name: '个人秘密',
-        exists: true,
-        true_nature: '结界正持续记录着每一个出入人员的能量异动。',
-        revealed: false,
-        revealed_to_ids: [],
-        locked_at_epoch: 1,
-        never_changes: true,
-        evidence_required: ['结界基座符文'],
-        evidence_collected: [],
-      },
-      {
-        id: idFactory.createId('ht', 2),
-        title: `${loc2Name}的大势力暗中盘剥野外资源的分配`,
-        layer: 'layer_2_organization_conspiracies',
-        layer_name: '组织阴谋',
-        exists: true,
-        true_nature: '势力通过人为制造资源短缺来掌握市场定价权。',
-        revealed: false,
-        revealed_to_ids: [],
-        locked_at_epoch: 1,
-        never_changes: true,
-        evidence_required: ['秘密配给密卷'],
-        evidence_collected: [],
-      },
-      {
-        id: idFactory.createId('ht', 3),
-        title: `${loc3Name}中的能量异常并非自然现象，而是古老封印泄露`,
-        layer: 'layer_3_world_lies',
-        layer_name: '世界谎言',
-        exists: true,
-        true_nature: '封印之下潜伏着古代失控的本源能量。',
-        revealed: false,
-        revealed_to_ids: [],
-        locked_at_epoch: 1,
-        never_changes: true,
-        evidence_required: ['破损封印碎片'],
-        evidence_collected: [],
-      },
-      {
-        id: idFactory.createId('ht', 4),
-        title: `${profile.display_name}的底层物理与魔法规则正在经历周期性重塑`,
-        layer: 'layer_4_cosmic_illusions',
-        layer_name: '宇宙假象',
-        exists: true,
-        true_nature: '世间的秩序每隔长久纪元便会由核心法则强行调整。',
-        revealed: false,
-        revealed_to_ids: [],
-        locked_at_epoch: 1,
-        never_changes: true,
-        evidence_required: ['古纪年碑铭文'],
-        evidence_collected: [],
-      },
-    ];
 
     return { locations, locationEdges, hiddenTruths };
   }

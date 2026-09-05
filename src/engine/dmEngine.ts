@@ -45,11 +45,19 @@ export class DMEngine {
     const profile = globalWorld.profile;
     const axioms = globalWorld.axioms || [];
 
+    // [P3.8] Narrator role is profile-driven, never hardcoded as "Dungeon Master".
+    // Falls back to the neutral "世界演算者" when no profile is present.
+    const narratorRole = resolveNarratorRole(profile);
+
     const ai = getGenAI();
 
     if (!ai) {
-      const fallbackNarration = `【DM 提示】(未检测到 GEMINI_API_KEY，使用基础规则DM反馈)
-你尝试执行了动作：“${playerActionText}”。在 ${currentLocation?.name || '未知区域'} 的静谧氛围中，周围的 ${npcsHere.map((n) => n.name).join('、') || '环境'} 保持着警惕。世界法则持续运转。`;
+      const fallbackNarration = buildDmFallbackNarration(
+        narratorRole,
+        playerActionText,
+        currentLocation?.name || '未知区域',
+        npcsHere.map((n) => n.name)
+      );
 
       await SchedulerEngine.processEpochTick();
       await CausalityEngine.tickSeeds();
@@ -78,7 +86,7 @@ export class DMEngine {
         ? axioms.map((a) => `- [${a.category}] ${a.statement} (后果: ${a.consequences.join(', ')})`).join('\n')
         : '- 天地万物遵循基本因果规律运转。';
 
-      const systemPrompt = `你是一个跑团/AI Native 永恒世界 RPG 的全知【DM (Dungeon Master) 地下城主】。
+      const systemPrompt = `${buildDmPromptHeader(narratorRole)}
 设计核心哲学: 开放世界沙盒。精髓在于【世界推演】而非固定脚本剧本！
 - 没有固定强制的线性剧情主线，由玩家自由决定道路与世界方向。
 - 玩家随时可以自定义或补充世界观设定，你必须接纳并遵守该世界的宪法与公理！
@@ -266,19 +274,11 @@ ${axiomsFormatted}
           proposals.push(...travelPlan.proposals);
           const locName = globalWorld.locations.get(parsed.targetLocationId)?.name || parsed.targetLocationId;
           updatesSummary.push(`📍 开启旅程: 【${locName}】(预计耗时 ${travelPlan.totalEpochs} 周期)`);
-        } catch (_) {
-          proposals.push({
-            id: `prop-move-${Date.now()}`,
-            operation: 'MOVE_CHARACTER',
-            entityType: 'CHARACTER',
-            entityId: pc.id,
-            payload: { characterId: pc.id, targetLocationId: parsed.targetLocationId, bypassConnectivity: true },
-            effectiveEpoch: currentEpoch,
-            preconditions: [],
-            source: { type: 'PLAYER_ACTION' },
-          });
+        } catch (err) {
+          // [P0-1] Travel planning failure must NOT silently teleport the actor.
+          // Do not fabricate a successful move, do not mutate location/presence/transaction.
           const locName = globalWorld.locations.get(parsed.targetLocationId)?.name || parsed.targetLocationId;
-          updatesSummary.push(`📍 移动到了区域: 【${locName}】`);
+          updatesSummary.push(`⚠️ 无法前往【${locName}】：当前不存在连通路线或目标不可达。未执行移动。`);
         }
       }
 
@@ -387,7 +387,7 @@ ${axiomsFormatted}
       const updatedLoc = pc ? globalWorld.locations.get(pc.location_id) : null;
 
       return {
-        dmNarration: parsed.dmNarration || '地下城主沉默片刻，世界在继续流转...',
+        dmNarration: parsed.dmNarration || `${narratorRole}静默片刻，世界在继续流转...`,
         diceRoll: parsed.diceRoll || undefined,
         stateUpdatesSummary: updatesSummary,
         currentLocationName: updatedLoc?.name || '未知区域',
@@ -396,7 +396,7 @@ ${axiomsFormatted}
     } catch (err: any) {
       console.error('DM Engine Error:', err);
       return {
-        dmNarration: `【DM 提示】你在风暴中静立片刻，隐隐察觉四周变局... (动作解析遇到微弱扰动)`,
+        dmNarration: `【${narratorRole} 提示】你静立片刻，隐隐察觉四周变局... (动作解析遇到微弱扰动)`,
         stateUpdatesSummary: ['纪元推进至 Epoch ' + globalWorld.snapshot.epoch],
         currentLocationName: currentLocation?.name || '未知',
         epoch: globalWorld.snapshot.epoch,

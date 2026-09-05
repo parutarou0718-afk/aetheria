@@ -34,8 +34,32 @@ export class WorldCreationRequestValidationError extends WorldProfileError {
 }
 
 export class WorldGenerationFailureError extends WorldProfileError {
-  constructor(reason: string) {
-    super(`World generation failure: ${reason}`, 'WORLD_GENERATION_FAILED');
+  constructor(reason: string, code = 'WORLD_GENERATION_FAILED') {
+    super(`World generation failure: ${reason}`, code);
     this.name = 'WorldGenerationFailureError';
+  }
+}
+
+/** Profile generation failed — NEVER fabricate a fake world. */
+export class WorldProfileGenerationError extends WorldProfileError {
+  constructor(reason: string) {
+    super(`World profile generation failed: ${reason}`, 'WORLD_PROFILE_GENERATION_FAILED');
+    this.name = 'WorldProfileGenerationError';
+  }
+}
+
+/** Skeleton generation failed — NEVER fabricate a fake map. */
+export class WorldSkeletonGenerationError extends WorldProfileError {
+  constructor(reason: string) {
+    super(`World skeleton generation failed: ${reason}`, 'WORLD_SKELETON_GENERATION_FAILED');
+    this.name = 'WorldSkeletonGenerationError';
+  }
+}
+
+/** Entity generation failed — NEVER fabricate fake actors. */
+export class WorldEntityGenerationError extends WorldProfileError {
+  constructor(reason: string) {
+    super(`World entity generation failed: ${reason}`, 'WORLD_ENTITY_GENERATION_FAILED');
+    this.name = 'WorldEntityGenerationError';
   }
 }

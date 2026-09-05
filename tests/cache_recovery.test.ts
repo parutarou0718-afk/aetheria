@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { WorldBootstrap } from '../src/engine/world/worldBootstrap';
+import { bootstrapWithDefaultWorld } from './helpers/worldFixture';
 import { WorldRepository } from '../src/engine/world/worldRepository';
 import { WorldCacheLoader } from '../src/engine/world/worldCacheLoader';
 import { globalWorld, setRecorderWriteContext } from '../src/engine/worldState';
@@ -8,7 +8,7 @@ describe('Cache Recovery Tests', () => {
   const worldId = 'world-cache-recovery-test';
 
   beforeAll(async () => {
-    await WorldBootstrap.bootstrap(worldId);
+    await bootstrapWithDefaultWorld(worldId);
   });
 
   it('Cache Recovery 1: WorldCacheLoader reloads clean state from DB', async () => {

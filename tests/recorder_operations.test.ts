@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { WorldBootstrap } from '../src/engine/world/worldBootstrap';
+import { bootstrapWithDefaultWorld } from './helpers/worldFixture';
 import { recorder } from '../src/engine/recorder/recorder';
 import { globalWorld } from '../src/engine/worldState';
 import { StateChangeProposal } from '../src/engine/recorder/changeSchemas';
@@ -9,7 +9,7 @@ describe('Recorder Operations & Error Handling Tests', () => {
   const worldId = `world-ops-${Date.now()}`;
 
   beforeAll(async () => {
-    await WorldBootstrap.bootstrap(worldId);
+    await bootstrapWithDefaultWorld(worldId);
   });
 
   it('Operation 1: Non-existent character immediately throws CHARACTER_NOT_FOUND', async () => {

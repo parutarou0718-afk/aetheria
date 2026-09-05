@@ -218,25 +218,67 @@ export class WorldDataStore {
   public llmCallsThisEpoch: number = 0;
 
   constructor() {
-    this.snapshot = createGuardedObject({
-      id: 'world-snapshot-001',
-      epoch: 1,
-      created_at: new Date().toISOString(),
-      world_name: '原初界域 (Genesis Realm)',
-      world_description: '一个蕴含无尽法则与历史秘辛的未定大千世界。势力交错，暗流汹涌，等待创世与探索。',
-      seed: 42,
-      world_facts_count: 0,
-      characters_count: 0,
-      organizations_count: 0,
-      locations_count: 0,
-      active_seeds_count: 0,
-      frozen_objects_count: 0,
-      completed_epochs: 1,
-    });
-    this.initDefaultWorld();
+    this.initEmptyWorld();
     this.runtimeWriteLocked = true;
   }
 
+  /**
+   * Cold-start the store into a brand-neutral, empty "awaiting genesis" world.
+   *
+   * NO default fantasy entities are created here. The world is left in
+   * `world_creation_state = 'UNSELECTED'` with empty Characters / Locations /
+   * Organizations / Facts / Seeds / Events / HiddenTruths. A real world is only
+   * materialized after the user submits a valid genesis request.
+   *
+   * This replaces the previous production call to `initDefaultWorld()`.
+   */
+  public initEmptyWorld() {
+    const prevContext = isRecorderWriteContext();
+    setRecorderWriteContext(true);
+    try {
+      this.snapshot = createGuardedObject({
+        id: 'world-snapshot-001',
+        epoch: 1,
+        created_at: new Date().toISOString(),
+        world_name: '未定世界 (Undecided World)',
+        world_description: '创世尚未开始。等待玩家描绘他们想要的世界的愿景。',
+        world_creation_state: 'UNSELECTED',
+        seed: 42,
+        world_facts_count: 0,
+        characters_count: 0,
+        organizations_count: 0,
+        locations_count: 0,
+        active_seeds_count: 0,
+        frozen_objects_count: 0,
+        completed_epochs: 1,
+      });
+
+      this.profile = null;
+      this.axioms = [];
+
+      this.characters.clear();
+      this.organizations.clear();
+      this.locations.clear();
+      this.facts.clear();
+      this.seeds.clear();
+      this.events = [];
+      this.hiddenTruths.clear();
+      this.wakeQueue = [];
+      this.totalLLMCalls = 0;
+      this.llmCallsThisEpoch = 0;
+
+      this.updateStats();
+    } finally {
+      setRecorderWriteContext(prevContext);
+    }
+  }
+
+  /**
+   * @deprecated Default Eldlan-style fantasy world. Intended ONLY as a test
+   * fixture / offline seed for existing suites that assert on legacy entities
+   * (e.g. pc-player, loc-tavern). MUST NOT be called from any production code
+   * path (server bootstrap, world/reset, or the WorldDataStore constructor).
+   */
   public initDefaultWorld() {
     const prevLock = this.runtimeWriteLocked;
     this.runtimeWriteLocked = false;
@@ -247,6 +289,7 @@ export class WorldDataStore {
       created_at: new Date().toISOString(),
       world_name: '原初界域 (Genesis Realm)',
       world_description: '一个蕴含无尽法则与历史秘辛的未定大千世界。势力交错，暗流汹涌，等待创世与探索。',
+      world_creation_state: 'CREATED',
       seed: 42,
       world_facts_count: 0,
       characters_count: 0,

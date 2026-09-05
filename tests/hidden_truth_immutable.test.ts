@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { WorldBootstrap } from '../src/engine/world/worldBootstrap';
+import { bootstrapWithDefaultWorld } from './helpers/worldFixture';
 import { WorldRepository } from '../src/engine/world/worldRepository';
 import { recorder } from '../src/engine/recorder/recorder';
 import { StateChangeProposal } from '../src/engine/recorder/changeSchemas';
@@ -8,7 +8,7 @@ describe('Hidden Truth Immutable Field Protection Tests', () => {
   const worldId = `world-truth-immutable-${Date.now()}`;
 
   beforeAll(async () => {
-    await WorldBootstrap.bootstrap(worldId);
+    await bootstrapWithDefaultWorld(worldId);
   });
 
   it('Rejects illegal modification of true_nature on immutable truth', async () => {

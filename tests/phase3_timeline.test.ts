@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { WorldBootstrap } from '../src/engine/world/worldBootstrap';
+import { bootstrapWithDefaultWorld } from './helpers/worldFixture';
 import { WorldRepository } from '../src/engine/world/worldRepository';
 import { TransactionService } from '../src/engine/timeline/transactionService';
 import { CheckpointProcessor } from '../src/engine/timeline/checkpointProcessor';
@@ -17,7 +17,7 @@ describe('Phase 3 Timeline Integration Suite', () => {
 
   beforeEach(async () => {
     testWorldId = `world-p3-vitest-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-    await WorldBootstrap.bootstrap(testWorldId);
+    await bootstrapWithDefaultWorld(testWorldId);
   });
 
   it('1. Route Planning: calculates shortest path and rejects identical origin/destination', async () => {
@@ -257,7 +257,7 @@ describe('Phase 3 Timeline Integration Suite', () => {
     const defaultWorldId = 'world-snapshot-001';
     await dbManager.run('DELETE FROM world_transactions WHERE world_id = ?', [defaultWorldId]);
     await dbManager.run('DELETE FROM scheduled_checkpoints WHERE world_id = ?', [defaultWorldId]);
-    await WorldBootstrap.bootstrap(defaultWorldId);
+    await bootstrapWithDefaultWorld(defaultWorldId);
 
     const travelResult = await TransactionService.planTravel({
       worldId: defaultWorldId,

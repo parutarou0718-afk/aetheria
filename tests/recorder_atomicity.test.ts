@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { dbManager } from '../src/engine/persistence/database';
-import { WorldBootstrap } from '../src/engine/world/worldBootstrap';
+import { bootstrapWithDefaultWorld } from './helpers/worldFixture';
 import { WorldRepository } from '../src/engine/world/worldRepository';
 import { recorder } from '../src/engine/recorder/recorder';
 import { globalWorld } from '../src/engine/worldState';
@@ -11,7 +11,7 @@ describe('Recorder Atomicity Tests (Phase 2 Core Directive)', () => {
   const worldId = 'world-atomicity-test';
 
   beforeAll(async () => {
-    await WorldBootstrap.bootstrap(worldId);
+    await bootstrapWithDefaultWorld(worldId);
   });
 
   it('Atomicity 1: Prepare Phase Failure -> DB, Change Log, Cache ALL untouched', async () => {

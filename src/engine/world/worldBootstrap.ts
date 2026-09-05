@@ -10,16 +10,16 @@ export class WorldBootstrap {
     const chars = existingSnapshot ? await WorldRepository.getAllCharacters(worldId) : [];
 
     if (!existingSnapshot || chars.length === 0) {
-      console.log(`[WorldBootstrap] No persistent world or empty characters found for ${worldId}. Seeding initial default world to DB...`);
+      console.log(`[WorldBootstrap] No persistent world or empty characters found for ${worldId}. Initializing an EMPTY awaiting-genesis world (UNSELECTED)...`);
       setRecorderWriteContext(true);
       try {
-        globalWorld.initDefaultWorld();
+        globalWorld.initEmptyWorld();
         globalWorld.snapshot.id = worldId;
       } finally {
         setRecorderWriteContext(false);
       }
       await this.saveAllToDatabase(worldId);
-      console.log(`[WorldBootstrap] Initial world ${worldId} seeded and saved to SQLite!`);
+      console.log(`[WorldBootstrap] Empty world ${worldId} initialized and persisted to SQLite. world_creation_state=UNSELECTED.`);
     } else {
       console.log(`[WorldBootstrap] Loading persistent world ${worldId} (Epoch ${existingSnapshot.epoch}) from SQLite...`);
       await this.loadFromDatabase(worldId);

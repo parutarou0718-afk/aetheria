@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { WorldBootstrap } from '../src/engine/world/worldBootstrap';
+import { bootstrapWithDefaultWorld } from './helpers/worldFixture';
 import { recorder } from '../src/engine/recorder/recorder';
 import { globalWorld } from '../src/engine/worldState';
 import { StateChangeProposal } from '../src/engine/recorder/changeSchemas';
@@ -8,7 +8,7 @@ describe('DM & Scheduler Recorder Integration Tests', () => {
   const worldId = 'world-dm-integration-test';
 
   beforeAll(async () => {
-    await WorldBootstrap.bootstrap(worldId);
+    await bootstrapWithDefaultWorld(worldId);
   });
 
   it('Integration 1: DM proposal updates character gold and generates event', async () => {

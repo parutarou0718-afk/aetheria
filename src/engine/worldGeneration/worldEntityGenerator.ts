@@ -1,9 +1,10 @@
-import { GoogleGenAI } from '@google/genai';
 import { WorldProfile } from '../worldProfile/worldProfileTypes';
 import { Location, Character, Organization, Seed, Event, WorldFact } from '../../types';
 import { SkeletonGeneratorOutput } from './worldSkeletonGenerator';
 import { DeterministicIdFactory } from './deterministicIdFactory';
 import { ZodEntityOutput } from './zodSchemas';
+import { generateJson } from '../llm/llmClient';
+import { WorldEntityGenerationError } from '../worldProfile/worldProfileErrors';
 
 export interface EntityGeneratorOutput {
   characters: Character[];
@@ -19,14 +20,14 @@ export class WorldEntityGenerator {
     skeleton: SkeletonGeneratorOutput,
     idFactory: DeterministicIdFactory
   ): Promise<EntityGeneratorOutput> {
-    const apiKey = process.env.GEMINI_API_KEY;
+    const system = [
+      'You are an AI RPG Entity Architect. Generate characters, organizations, facts, seeds, and the genesis event',
+      'strictly matching the World Profile, Axioms, and Skeleton. Honor the world terminology, power system,',
+      'naming conventions, and required/forbidden concepts exactly. Do NOT default to generic Western-fantasy',
+      'species/roles/gold/HP semantics when the world lore differs.',
+    ].join(' ');
 
-    if (apiKey && apiKey !== 'MY_GEMINI_API_KEY') {
-      try {
-        const ai = new GoogleGenAI({ apiKey });
-        const prompt = `You are an AI RPG Entity Architect. Generate characters, organizations, facts, seeds, and genesis event based strictly on this World Profile, Axioms, and Skeleton.
-
-World Display Name: ${profile.display_name}
+    const user = `World Display Name: ${profile.display_name}
 World Description: ${profile.world_description}
 Power System: ${profile.power_system}
 Culture & Influences: ${JSON.stringify(profile.cultural_influences)}
@@ -48,6 +49,7 @@ Requirements:
 4. Generate 1+ World Facts about the world.
 5. Generate 1+ Seeds linked to one of the hidden truths.
 6. Provide a genesisEventDescription string.
+7. Do NOT use any Forbidden Concept, anywhere.
 
 Return JSON ONLY matching structure:
 {
@@ -96,35 +98,44 @@ Return JSON ONLY matching structure:
   "genesisEventDescription": "string"
 }`;
 
-        const timeoutPromise = new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('AI Request timed out after 4000ms')), 4000)
+    const parsed = await this.invokeAi(system, user);
+
+    try {
+      const validated = ZodEntityOutput.safeParse(parsed);
+      if (!validated.success) {
+        throw new WorldEntityGenerationError(
+          `AI returned malformed entity JSON: ${this.safeIssue(validated)}`
         );
-
-        const response = (await Promise.race([
-          ai.models.generateContent({
-            model: 'gemini-3.6-flash',
-            contents: prompt,
-            config: {
-              responseMimeType: 'application/json',
-            },
-          }),
-          timeoutPromise,
-        ])) as any;
-
-        const text = response.text;
-        if (text) {
-          const rawParsed = JSON.parse(text);
-          const validated = ZodEntityOutput.safeParse(rawParsed);
-          if (validated.success) {
-            return this.buildEntitiesFromParsed(validated.data, profile, skeleton, idFactory);
-          }
-        }
-      } catch (err) {
-        console.warn('[WorldEntityGenerator] AI entity generation failed. Falling back to dynamic profile generator.', err);
       }
+      return this.buildEntitiesFromParsed(validated.data, profile, skeleton, idFactory);
+    } catch (err) {
+      if (err instanceof WorldEntityGenerationError) throw err;
+      throw new WorldEntityGenerationError(
+        `Failed to interpret AI entity output: ${(err as Error).message}`
+      );
     }
+  }
 
-    return this.generateProfileDrivenEntities(profile, skeleton, idFactory);
+  private static async invokeAi(system: string, user: string): Promise<any> {
+    try {
+      return await generateJson(system, user, {
+        timeoutMs: 30000,
+        jsonSchemaHint:
+          'Return strictly a JSON object with keys "characters", "organizations", "facts", "seeds", "genesisEventDescription".',
+      });
+    } catch (err) {
+      throw new WorldEntityGenerationError(
+        `World entity generation failed: ${(err as Error).message}`
+      );
+    }
+  }
+
+  private static safeIssue(result: { error?: any }): string {
+    try {
+      return JSON.stringify(result?.error ?? '');
+    } catch {
+      return 'unknown schema error';
+    }
   }
 
   private static buildEntitiesFromParsed(
@@ -197,7 +208,7 @@ Return JSON ONLY matching structure:
       const orgId = idFactory.createId('org', idx + 1);
       let hqId = ro.headquartersLocationKeyId;
       if (!locMap.has(hqId)) hqId = firstLocId;
-      let leaderId = keyToCharId.get(ro.leaderCharacterKeyId) || characters.find((c) => c.type === 'NPC')?.id || characters[0].id;
+      const leaderId = keyToCharId.get(ro.leaderCharacterKeyId) || characters.find((c) => c.type === 'NPC')?.id || characters[0].id;
 
       return {
         id: orgId,
@@ -303,211 +314,5 @@ Return JSON ONLY matching structure:
     ];
 
     return { characters, organizations, facts, seeds, events };
-  }
-
-  private static generateProfileDrivenEntities(
-    profile: WorldProfile,
-    skeleton: SkeletonGeneratorOutput,
-    idFactory: DeterministicIdFactory
-  ): EntityGeneratorOutput {
-    const worldId = profile.world_id;
-    const terms = profile.terminology;
-
-    const locStart = skeleton.locations[0];
-    const locTrade = skeleton.locations[1] || locStart;
-
-    const mainTitle = terms.professionTerms?.[0] || '探索者';
-    const factionName = terms.factionTerms?.[0] || '自治盟会';
-    const mainSpecies = terms.creatureTerms?.[0] || '世间生灵';
-
-    const pcId = idFactory.createId('pc', 'player');
-    const npc1Id = idFactory.createId('npc', 'leader');
-    const npc2Id = idFactory.createId('npc', 'trader');
-    const orgId = idFactory.createId('org', 'primary');
-
-    const pc: Character = {
-      id: pcId,
-      type: 'PC',
-      name: '行路者',
-      title: mainTitle,
-      species: mainSpecies,
-      age: 22,
-      status: 'ALIVE',
-      presence_state: 'AT_LOCATION',
-      location_id: locStart.id,
-      goal: { primary: `在${profile.display_name}中探寻深层法则并建立属于自己的传奇`, secondary: [] },
-      personality: ['坚韧', '敏锐'],
-      fear: '遗失本源使命',
-      attributes: { hp: 100, max_hp: 100, mp: 50, max_mp: 50, strength: 12, dexterity: 12, intelligence: 14, charisma: 11 },
-      skills: { '秩序觉察': 12, '环境辨识': 10 },
-      resources: { gold: 60, reputation: 10 },
-      inventory: [
-        { item_id: 'item-1', name: terms.artifactTerms?.[0] || '随身信物', type: 'MISC', quantity: 1 },
-        { item_id: 'item-2', name: '行囊干粮', type: 'CONSUMABLE', quantity: 3 },
-      ],
-      knowledge: { known_facts: [`${locStart.name}的周边环境`], known_characters: [npc1Id], known_locations: [locStart.id] },
-      memory: { short_term: [{ text: `在${locStart.name}开启了行程`, importance: 4, epoch: 1 }], compressed: '', important_events: [] },
-      relationships: [],
-      current_action: { type: 'IDLE', description: `在${locStart.name}考察环境`, started_at_epoch: 1, estimated_end_epoch: 1 },
-      frozen: false,
-      simulation_level: 1,
-      last_simulated_epoch: 1,
-      created_at_epoch: 1,
-      updated_at_epoch: 1,
-    };
-
-    const npc1: Character = {
-      id: npc1Id,
-      type: 'NPC',
-      name: '执事管顾',
-      title: `${factionName}负责人`,
-      species: mainSpecies,
-      age: 40,
-      status: 'ALIVE',
-      presence_state: 'AT_LOCATION',
-      location_id: locStart.id,
-      goal: { primary: `维护${locStart.name}的秩序与安定`, secondary: [] },
-      personality: ['稳重', '周妥'],
-      fear: '势力纷争引致聚落破败',
-      attributes: { hp: 110, max_hp: 110, mp: 40, max_mp: 40, strength: 12, dexterity: 10, intelligence: 14, charisma: 15 },
-      skills: { '调度协商': 14 },
-      resources: { gold: 300, reputation: 50 },
-      inventory: [{ item_id: 'item-3', name: '结社印记', type: 'MISC', quantity: 1 }],
-      knowledge: { known_facts: [`${profile.display_name}的通商要道`], known_characters: [pcId], known_locations: [locStart.id, locTrade.id] },
-      memory: { short_term: [{ text: `接待行路者进入${locStart.name}`, importance: 3, epoch: 1 }], compressed: '', important_events: [] },
-      relationships: [],
-      current_action: { type: 'IDLE', description: '整理布告与要务', started_at_epoch: 1, estimated_end_epoch: 1 },
-      frozen: false,
-      simulation_level: 1,
-      last_simulated_epoch: 1,
-      created_at_epoch: 1,
-      updated_at_epoch: 1,
-    };
-
-    const npc2: Character = {
-      id: npc2Id,
-      type: 'NPC',
-      name: '资深贩客',
-      title: '交易行者',
-      species: mainSpecies,
-      age: 36,
-      status: 'ALIVE',
-      presence_state: 'AT_LOCATION',
-      location_id: locTrade.id,
-      goal: { primary: `收集并交易各类${terms.artifactTerms?.[0] || '遗物'}`, secondary: [] },
-      personality: ['精明', '干练'],
-      fear: '商路断绝',
-      attributes: { hp: 90, max_hp: 90, mp: 60, max_mp: 60, strength: 10, dexterity: 12, intelligence: 15, charisma: 14 },
-      skills: { '识货交易': 15 },
-      resources: { gold: 600, reputation: 30 },
-      inventory: [{ item_id: 'item-4', name: '交易名录', type: 'MISC', quantity: 1 }],
-      knowledge: { known_facts: [`${locTrade.name}的物价变动`], known_characters: [], known_locations: [locTrade.id] },
-      memory: { short_term: [{ text: '清点行囊物资', importance: 2, epoch: 1 }], compressed: '', important_events: [] },
-      relationships: [],
-      current_action: { type: 'IDLE', description: '在要道旁整顿货盘', started_at_epoch: 1, estimated_end_epoch: 1 },
-      frozen: false,
-      simulation_level: 1,
-      last_simulated_epoch: 1,
-      created_at_epoch: 1,
-      updated_at_epoch: 1,
-    };
-
-    const characters = [pc, npc1, npc2];
-
-    const organization: Organization = {
-      id: orgId,
-      name: factionName,
-      type: 'GUILD',
-      description: `在${profile.display_name}中自发形成的互助与探索联盟。`,
-      headquarters_id: locStart.id,
-      territory_ids: [locStart.id],
-      leader_id: npc1Id,
-      member_ids: [pcId, npc1Id],
-      resources: { wealth: 800, influence: 40, military_power: 20, secret_knowledge: 15 },
-      goals: [{ id: 'g1', description: '保障聚落安全并提供支援', priority: 1, progress: 0.4, type: 'DEFENSE', status: 'ACTIVE', created_at_epoch: 1 }],
-      projects: [{ id: 'p1', name: '探索外围异常', description: '派员探查周边异状', assigned_member_ids: [pcId], epoch_started: 1, epoch_deadline: 5, progress: 0.1, status: 'IN_PROGRESS' }],
-      relationships: [],
-      reputation: { public: 50, nobility: 0, underworld: 10 },
-      frozen: false,
-      simulation_level: 1,
-      last_simulated_epoch: 1,
-      created_at_epoch: 1,
-      updated_at_epoch: 1,
-    };
-
-    const facts: WorldFact[] = [
-      {
-        id: idFactory.createId('fact', 1),
-        statement: `${profile.display_name}的秩序轮廓正在重新组合形成。`,
-        category: 'GEOGRAPHY',
-        confidence: 'CONFIRMED',
-        source: { type: 'OBSERVATION', source_id: locStart.id, epoch_discovered: 1 },
-        related_entity_ids: [locStart.id],
-        is_active: true,
-        created_at_epoch: 1,
-        updated_at_epoch: 1,
-      },
-      ...(profile.allowed_concepts || []).map((concept, idx) => ({
-        id: idFactory.createId('fact', idx + 2),
-        statement: `${profile.display_name}关键存在要素：${concept}`,
-        category: 'GEOGRAPHY' as const,
-        confidence: 'CONFIRMED' as const,
-        source: { type: 'OBSERVATION' as const, source_id: locStart.id, epoch_discovered: 1 },
-        related_entity_ids: [locStart.id],
-        is_active: true,
-        created_at_epoch: 1,
-        updated_at_epoch: 1,
-      })),
-    ];
-
-    const seeds: Seed[] = [
-      {
-        id: idFactory.createId('seed', 1),
-        type: 'INVESTIGATION',
-        status: 'IN_PROGRESS',
-        visible_layer: {
-          description: `${locStart.name}流传着关于深层隐秘的探索委托。`,
-          actor_ids: [pcId],
-          location_id: locStart.id,
-          start_epoch: 1,
-          estimated_end_epoch: 3,
-        },
-        hidden_truth: skeleton.hiddenTruths[0],
-        importance: 2,
-        progress: 0.1,
-        player_opportunity: {
-          exists: true,
-          description: '开展调查以解开此地真相',
-          discovery_condition: '探访聚落公告板与知情人士',
-          type: 'QUEST',
-        },
-        created_at_epoch: 1,
-        updated_at_epoch: 1,
-      },
-    ];
-
-    const events: Event[] = [
-      {
-        id: idFactory.createId('event', 'init'),
-        type: 'WORLD_STATE',
-        description: `【创世纪元】${profile.display_name}的法则在世间流转。行路者在${locStart.name}踏上了全新的探索之途。`,
-        location_id: locStart.id,
-        involved_entity_ids: [pcId, npc1Id],
-        cause: { type: 'WORLD_CREATION' },
-        effects: [],
-        epoch: 1,
-        resolved: true,
-        resolution_epoch: 1,
-        created_at_epoch: 1,
-      },
-    ];
-
-    return {
-      characters,
-      organizations: [organization],
-      facts,
-      seeds,
-      events,
-    };
   }
 }

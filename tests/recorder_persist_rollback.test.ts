@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, vi } from 'vitest';
-import { WorldBootstrap } from '../src/engine/world/worldBootstrap';
+import { bootstrapWithDefaultWorld } from './helpers/worldFixture';
 import { WorldRepository } from '../src/engine/world/worldRepository';
 import { recorder } from '../src/engine/recorder/recorder';
 import { globalWorld } from '../src/engine/worldState';
@@ -9,7 +9,7 @@ describe('Recorder Persist Stage Rollback Test', () => {
   const worldId = `world-rollback-${Date.now()}`;
 
   beforeAll(async () => {
-    await WorldBootstrap.bootstrap(worldId);
+    await bootstrapWithDefaultWorld(worldId);
   });
 
   it('rolls back database transaction when an error occurs during Persist stage', async () => {

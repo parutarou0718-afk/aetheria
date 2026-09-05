@@ -1,7 +1,12 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
+import { bootstrapWithDefaultWorld } from './helpers/worldFixture';
 import { globalWorld, setRecorderWriteContext } from '../src/engine/worldState';
 
 describe('Deep State Write Guard Violation Tests', () => {
+  beforeAll(async () => {
+    await bootstrapWithDefaultWorld();
+  });
+
   it('Deep Guard 1: Direct gold mutation throws Write Guard Violation', () => {
     expect(() => {
       const pc = globalWorld.characters.get('pc-player');

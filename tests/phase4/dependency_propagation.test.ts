@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { dbManager } from '../../src/engine/persistence/database';
-import { WorldBootstrap } from '../../src/engine/world/worldBootstrap';
+import { bootstrapWithDefaultWorld } from '../helpers/worldFixture';
 import { WorldRepository } from '../../src/engine/world/worldRepository';
 import { WorldMutationCoordinator } from '../../src/engine/world/worldMutationCoordinator';
 import { TransactionService } from '../../src/engine/timeline/transactionService';
@@ -12,7 +12,7 @@ describe('Phase 4: Dependency Propagation Tests', () => {
   beforeEach(async () => {
     worldId = `world-dep-prop-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
     await dbManager.initialize();
-    await WorldBootstrap.bootstrap(worldId);
+    await bootstrapWithDefaultWorld(worldId);
   });
 
   it('1. Propagates location status change to invalidate dependent travel transaction', async () => {

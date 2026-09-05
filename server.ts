@@ -11,6 +11,7 @@ import { DMEngine } from './src/engine/dmEngine';
 import { check7Invariants } from './src/engine/invariants';
 import { WorldBootstrap } from './src/engine/world/worldBootstrap';
 import { WorldRepository } from './src/engine/world/worldRepository';
+import { WorldResetService } from './src/engine/world/worldResetService';
 import { WorldGenesisService } from './src/engine/worldGeneration/worldGenesisService';
 import { recorder } from './src/engine/recorder/recorder';
 import { StateChangeProposal } from './src/engine/recorder/changeSchemas';
@@ -46,21 +47,44 @@ async function startServer() {
   };
 
   app.get('/api/v1/config', (req, res) => {
+    const provider = (process.env.LLM_PROVIDER || 'gemini').toLowerCase();
+    const keyEnv = provider === 'deepseek' ? process.env.DEEPSEEK_API_KEY : process.env.GEMINI_API_KEY;
     res.json({
       ...apiConfig,
-      hasApiKey: !!process.env.GEMINI_API_KEY,
+      provider,
+      hasApiKey: !!keyEnv && keyEnv !== 'MY_GEMINI_API_KEY' && keyEnv !== 'MY_DEEPSEEK_API_KEY',
     });
   });
 
   app.post('/api/v1/config', (req, res) => {
     const { provider, model, baseUrl, apiKey } = req.body;
-    if (provider) apiConfig.provider = provider;
-    if (model) apiConfig.model = model;
-    if (baseUrl) apiConfig.baseUrl = baseUrl;
-    if (apiKey) {
-      process.env.GEMINI_API_KEY = apiKey;
+    if (provider) {
+      apiConfig.provider = provider;
+      process.env.LLM_PROVIDER = provider;
     }
-    res.json({ status: 'ok', config: { ...apiConfig, hasApiKey: !!process.env.GEMINI_API_KEY } });
+    if (model) {
+      apiConfig.model = model;
+      process.env.LLM_MODEL = model;
+    }
+    if (baseUrl) {
+      apiConfig.baseUrl = baseUrl;
+      process.env.LLM_BASE_URL = baseUrl;
+    }
+    if (apiKey) {
+      // Store into the environment variable matching the active provider.
+      if (apiConfig.provider === 'deepseek') {
+        process.env.DEEPSEEK_API_KEY = apiKey;
+      } else {
+        process.env.GEMINI_API_KEY = apiKey;
+      }
+    }
+
+    const providerActive = apiConfig.provider === 'deepseek' ? 'deepseek' : 'gemini';
+    const keyEnv = providerActive === 'deepseek' ? process.env.DEEPSEEK_API_KEY : process.env.GEMINI_API_KEY;
+    res.json({
+      status: 'ok',
+      config: { ...apiConfig, provider: providerActive, hasApiKey: !!keyEnv },
+    });
   });
 
   // 1. Get World Snapshot & Overview
@@ -76,16 +100,28 @@ async function startServer() {
   app.post('/api/v1/world/genesis', async (req, res) => {
     try {
       const { userVision, worldId = 'world-snapshot-001', constraints, generationSeed } = req.body;
+
+      // [P0-3] Do NOT guess the user's world. Missing vision is an explicit error.
+      if (!userVision || typeof userVision !== 'string' || userVision.trim().length < 20) {
+        res.status(400).json({
+          status: 'error',
+          code: 'WORLD_VISION_REQUIRED',
+          error: 'world genesis requires a userVision of at least 20 characters describing the desired world. Nothing will be fabricated.',
+        });
+        return;
+      }
+
       const request = {
         worldId,
-        userVision: userVision || '一个规则独特的奇幻新世界',
+        userVision: userVision.trim(),
         constraints,
         generationSeed: typeof generationSeed === 'number' ? generationSeed : Math.floor(Math.random() * 1000000),
       };
       const result = await WorldGenesisService.createDynamicWorld(request);
       res.json({ status: 'ok', ...result });
     } catch (err: any) {
-      res.status(400).json({ status: 'error', error: err.message });
+      const code = typeof err?.code === 'string' ? err.code : 'WORLD_GENERATION_FAILED';
+      res.status(400).json({ status: 'error', code, error: err.message });
     }
   });
 
@@ -185,36 +221,17 @@ async function startServer() {
             startEpoch: currentEpoch,
           });
         } catch (err: any) {
-          console.warn('[Server] TransactionService.planTravel failed, applying fallback travel proposals:', err.message);
-          proposals.push({
-            id: `prop-route-move-${Date.now()}`,
-            operation: 'MOVE_CHARACTER',
-            entityType: 'CHARACTER',
-            entityId: char.id,
-            payload: { characterId: char.id, targetLocationId: target_location_id, bypassConnectivity: true },
-            effectiveEpoch: currentEpoch,
-            preconditions: [],
-            source: { type: 'PLAYER_ACTION' },
+          // [P0-1] Travel planning failure must NOT silently teleport the actor.
+          // Return a truthful error; do NOT submit any MOVE_CHARACTER bypass, do NOT mutate
+          // location/presence/transaction, do NOT fabricate a successful travel narration.
+          const msg = err?.message || String(err);
+          console.warn(`[Server] TransactionService.planTravel failed: ${msg}. No movement was committed.`);
+          res.status(400).json({
+            status: 'error',
+            code: 'TRAVEL_PLAN_FAILED',
+            error: `Route to ${target_location_id} is not currently feasible. No movement performed.`,
           });
-
-          proposals.push({
-            id: `prop-route-act-${Date.now()}`,
-            operation: 'SET_CHARACTER_ACTION',
-            entityType: 'CHARACTER',
-            entityId: char.id,
-            payload: {
-              characterId: char.id,
-              action: {
-                type: 'TRAVEL',
-                description: `前往 ${targetLoc.name}`,
-                started_at_epoch: currentEpoch,
-                estimated_end_epoch: currentEpoch + 1,
-              },
-            },
-            effectiveEpoch: currentEpoch,
-            preconditions: [],
-            source: { type: 'PLAYER_ACTION' },
-          });
+          return;
         }
 
         SchedulerEngine.pushWakeSignal({
@@ -528,11 +545,14 @@ async function startServer() {
     }
   });
 
-  // 15. Reset World to Initial Baseline
+  // 15. Reset World to Initial Baseline (empty awaiting-genesis state)
   app.post('/api/v1/world/reset', async (req, res) => {
-    globalWorld.initDefaultWorld();
-    await WorldRepository.saveWorldSnapshot(globalWorld.snapshot); // audit-direct-write: allow reset endpoint
-    res.json({ status: 'reset_completed', snapshot: globalWorld.snapshot });
+    const worldId = typeof req.query.worldId === 'string' ? req.query.worldId : 'world-snapshot-001';
+    // [P0-2] Reset must NOT recreate the default fantasy world. It clears the current
+    // world back to an empty `UNSELECTED` state (both memory and DB), returning to awaiting-genesis.
+    // Delegating to WorldResetService keeps the reset behavior single-sourced & unit testable.
+    const result = await WorldResetService.reset(worldId);
+    res.json({ ...result, snapshot: globalWorld.snapshot });
   });
 
   // === VITE MIDDLEWARE SETUP ===

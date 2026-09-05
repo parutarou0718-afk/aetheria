@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { WorldBootstrap } from '../src/engine/world/worldBootstrap';
+import { bootstrapWithDefaultWorld } from './helpers/worldFixture';
 import { WorldRepository } from '../src/engine/world/worldRepository';
 import { recorder } from '../src/engine/recorder/recorder';
 import { globalWorld, setRecorderWriteContext } from '../src/engine/worldState';
@@ -10,7 +10,7 @@ describe('WorkingSet Repository-First Authority & Protection Tests', () => {
   const worldId = `world-authority-${Date.now()}`;
 
   beforeAll(async () => {
-    await WorldBootstrap.bootstrap(worldId);
+    await bootstrapWithDefaultWorld(worldId);
   });
 
   it('Database Authority: Contaminated globalWorld cache does NOT affect DB delta calculation', async () => {

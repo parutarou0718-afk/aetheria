@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { dbManager } from '../src/engine/persistence/database';
-import { WorldBootstrap } from '../src/engine/world/worldBootstrap';
+import { bootstrapWithDefaultWorld } from './helpers/worldFixture';
 import { WorldRepository } from '../src/engine/world/worldRepository';
 import { recorder } from '../src/engine/recorder/recorder';
 import { globalWorld } from '../src/engine/worldState';
@@ -12,7 +12,7 @@ describe('Aetheria World Engine - Phase 1 Persistence & Phase 2 Recorder', () =>
 
   beforeAll(async () => {
     // Initialize DB and bootstrap
-    await WorldBootstrap.bootstrap(worldId);
+    await bootstrapWithDefaultWorld(worldId);
   });
 
   it('Phase 1: DB connection and tables initialized successfully', async () => {

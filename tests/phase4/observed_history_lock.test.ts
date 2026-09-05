@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { dbManager } from '../../src/engine/persistence/database';
-import { WorldBootstrap } from '../../src/engine/world/worldBootstrap';
+import { bootstrapWithDefaultWorld } from '../helpers/worldFixture';
 import { WorldRepository } from '../../src/engine/world/worldRepository';
 import { recorder } from '../../src/engine/recorder/recorder';
 import { ObservedHistoryRecord } from '../../src/engine/history/observedHistoryTypes';
@@ -11,7 +11,7 @@ describe('Phase 4: Observed History Lock Tests', () => {
   beforeEach(async () => {
     worldId = `world-obs-lock-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
     await dbManager.initialize();
-    await WorldBootstrap.bootstrap(worldId);
+    await bootstrapWithDefaultWorld(worldId);
   });
 
   it('1. Creates and persists observed history record via Recorder', async () => {
