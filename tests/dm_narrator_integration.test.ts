@@ -4,7 +4,7 @@ import { bootstrapWithDefaultWorld } from './helpers/worldFixture';
 
 describe('DMEngine narrator integration', () => {
   beforeEach(async () => {
-    delete process.env.GEMINI_API_KEY;
+    delete process.env.LLM_API_KEY;
     await bootstrapWithDefaultWorld();
   });
 

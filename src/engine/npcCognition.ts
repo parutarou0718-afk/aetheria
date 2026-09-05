@@ -1,22 +1,6 @@
-import { GoogleGenAI } from '@google/genai';
 import { Character, CharacterMemoryItem } from '../types';
 import { globalWorld } from './worldState';
-
-let genAIClient: GoogleGenAI | null = null;
-
-function getGenAI(): GoogleGenAI | null {
-  if (!genAIClient && process.env.GEMINI_API_KEY) {
-    genAIClient = new GoogleGenAI({
-      apiKey: process.env.GEMINI_API_KEY,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        },
-      },
-    });
-  }
-  return genAIClient;
-}
+import { generateJson, hasLlmApiKey } from './llm/llmClient';
 
 export class NPCCognitionEngine {
   public static addMemory(characterId: string, text: string, importance: number = 3) {
@@ -76,10 +60,9 @@ export class NPCCognitionEngine {
       return { reply: 'NPC不存在。', trustDelta: 0, favorDelta: 0 };
     }
 
-    const ai = getGenAI();
     const recalledMemories = this.recallMemories(npc, playerMessage);
 
-    if (!ai) {
+    if (!hasLlmApiKey()) {
       // Rule-based fallback if no Gemini key
       const fallbackReplies: Record<string, string> = {
         'npc-old-lo': `${npc.name} 抹了抹手上的铁屑，粗声说道：“小伙子，铁冠城现在不太平静。古矿坑的震动和阴影巷的黑鸦都不是好惹的... 你有事要找我打铁，还是想打听那批货？”`,
@@ -130,16 +113,11 @@ export class NPCCognitionEngine {
   "favorDelta": 0 (整数 -5 到 5)
 }`;
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.6-flash',
-        contents: systemPrompt,
-        config: {
-          responseMimeType: 'application/json',
-        },
-      });
-
-      const rawText = response.text || '';
-      const parsed = JSON.parse(rawText);
+      const parsed = await generateJson(
+        systemPrompt,
+        'Return only the requested JSON object.',
+        { timeoutMs: 60000 }
+      ) as any;
 
       const trustDelta = typeof parsed.trustDelta === 'number' ? parsed.trustDelta : 0;
       const favorDelta = typeof parsed.favorDelta === 'number' ? parsed.favorDelta : 0;

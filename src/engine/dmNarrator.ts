@@ -34,7 +34,7 @@ export function buildDmPromptHeader(narratorRole: string): string {
  * Fallback narration for when no LLM key is configured. Uses the dynamic role.
  */
 export function buildDmFallbackNarration(narratorRole: string, playerActionText: string, locationName: string, npcNames: string[]): string {
-  return `【${narratorRole} 提示】(未检测到 GEMINI_API_KEY，使用基础规则反馈)\n你尝试执行了动作：“${playerActionText}”。在 ${locationName || '未知区域'} 的静谧氛围中，周围的 ${npcNames.join('、') || '环境'} 保持着警惕。世界法则持续运转。`;
+  return `【${narratorRole} 提示】(未检测到 LLM_API_KEY，使用基础规则反馈)\n你尝试执行了动作：“${playerActionText}”。在 ${locationName || '未知区域'} 的静谧氛围中，周围的 ${npcNames.join('、') || '环境'} 保持着警惕。世界法则持续运转。`;
 }
 
 /**

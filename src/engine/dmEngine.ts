@@ -1,4 +1,3 @@
-import { GoogleGenAI } from '@google/genai';
 import { globalWorld } from './worldState';
 import { SchedulerEngine } from './scheduler';
 import { CausalityEngine } from './causality';
@@ -12,22 +11,7 @@ import {
   buildDmPromptHeader,
   resolveNarratorRole,
 } from './dmNarrator';
-
-let genAIClient: GoogleGenAI | null = null;
-
-function getGenAI(): GoogleGenAI | null {
-  if (!genAIClient && process.env.GEMINI_API_KEY) {
-    genAIClient = new GoogleGenAI({
-      apiKey: process.env.GEMINI_API_KEY,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        },
-      },
-    });
-  }
-  return genAIClient;
-}
+import { generateJson, hasLlmApiKey } from './llm/llmClient';
 
 export interface DMResponse {
   dmNarration: string;
@@ -54,9 +38,7 @@ export class DMEngine {
     // Falls back to the neutral "世界演算者" when no profile is present.
     const narratorRole = resolveNarratorRole(profile);
 
-    const ai = getGenAI();
-
-    if (!ai) {
+    if (!hasLlmApiKey()) {
       const fallbackNarration = buildDmFallbackNarration(
         narratorRole,
         playerActionText,
@@ -167,16 +149,11 @@ ${axiomsFormatted}
   "advanceEpoch": true
 }`;
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.6-flash',
-        contents: systemPrompt,
-        config: {
-          responseMimeType: 'application/json',
-        },
-      });
-
-      const rawText = response.text || '';
-      const parsed = JSON.parse(rawText);
+      const parsed = await generateJson(
+        systemPrompt,
+        'Return only the requested JSON object.',
+        { timeoutMs: 60000 }
+      ) as any;
 
       const updatesSummary: string[] = [];
       const proposals: StateChangeProposal[] = [];
