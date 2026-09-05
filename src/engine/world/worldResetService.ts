@@ -15,11 +15,10 @@ export class WorldResetService {
     // [P0-2] Reset must NOT recreate the default fantasy world. It clears the
     // current world back to an empty `UNSELECTED` state (both memory and DB).
     globalWorld.initEmptyWorld();
-    globalWorld.snapshot.id = worldId;
+    globalWorld.snapshot.id = worldId; // audit-direct-write: allow reset lifecycle assignment
     await WorldRepository.deleteWorldData(worldId);
-    // audit-direct-write: allow reset endpoint to persist the empty snapshot
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await WorldRepository.saveWorldSnapshot(globalWorld.snapshot as any);
+    await WorldRepository.saveWorldSnapshot(globalWorld.snapshot as any); // audit-direct-write: allow reset lifecycle persistence
     return { status: 'reset_completed', world_creation_state: globalWorld.snapshot.world_creation_state };
   }
 }

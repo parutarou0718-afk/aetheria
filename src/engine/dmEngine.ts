@@ -7,6 +7,11 @@ import { Location } from '../types';
 import { recorder } from './recorder/recorder';
 import { StateChangeProposal } from './recorder/changeSchemas';
 import { TransactionService } from './timeline/transactionService';
+import {
+  buildDmFallbackNarration,
+  buildDmPromptHeader,
+  resolveNarratorRole,
+} from './dmNarrator';
 
 let genAIClient: GoogleGenAI | null = null;
 
