@@ -147,7 +147,7 @@ export const NPCDialogueModal: React.FC<NPCDialogueModalProps> = ({
             </div>
             <span className="text-xs text-indigo-300 flex items-center gap-1 font-mono">
               <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-              Gemini 3.6 Flash Server-Side
+              OpenAI-compatible LLM Server-Side
             </span>
           </div>
 

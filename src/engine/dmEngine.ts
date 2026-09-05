@@ -8,6 +8,7 @@ import { StateChangeProposal } from './recorder/changeSchemas';
 import { TransactionService } from './timeline/transactionService';
 import {
   buildDmFallbackNarration,
+  buildDmErrorNarration,
   buildDmPromptHeader,
   resolveNarratorRole,
 } from './dmNarrator';
@@ -378,8 +379,8 @@ ${axiomsFormatted}
     } catch (err: any) {
       console.error('DM Engine Error:', err);
       return {
-        dmNarration: `【${narratorRole} 提示】你静立片刻，隐隐察觉四周变局... (动作解析遇到微弱扰动)`,
-        stateUpdatesSummary: ['纪元推进至 Epoch ' + globalWorld.snapshot.epoch],
+        dmNarration: buildDmErrorNarration(narratorRole),
+        stateUpdatesSummary: ['Action resolution failed; no DM-generated state change was committed.'],
         currentLocationName: currentLocation?.name || '未知',
         epoch: globalWorld.snapshot.epoch,
       };

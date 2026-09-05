@@ -20,6 +20,7 @@ import { TransactionService } from './src/engine/timeline/transactionService';
 import { CheckpointProcessor } from './src/engine/timeline/checkpointProcessor';
 import { GlobalTimeline } from './src/engine/timeline/globalTimeline';
 import { TimelineError } from './src/engine/timeline/timelineErrors';
+import { hasLlmApiKey, resolveLlmConfig } from './src/engine/llm/llmClient';
 
 dotenv.config();
 
@@ -39,51 +40,28 @@ async function startServer() {
   // === REST API ENDPOINTS ===
 
   // 0. API & LLM Provider Configuration
-  let apiConfig = {
-    provider: process.env.LLM_PROVIDER || 'gemini',
-    model: process.env.LLM_MODEL || 'gemini-2.5-flash',
-    baseUrl: process.env.LLM_BASE_URL || 'https://generativelanguage.googleapis.com',
-    hasApiKey: !!process.env.GEMINI_API_KEY,
-  };
-
   app.get('/api/v1/config', (req, res) => {
-    const provider = (process.env.LLM_PROVIDER || 'gemini').toLowerCase();
-    const keyEnv = provider === 'deepseek' ? process.env.DEEPSEEK_API_KEY : process.env.GEMINI_API_KEY;
     res.json({
-      ...apiConfig,
-      provider,
-      hasApiKey: !!keyEnv && keyEnv !== 'MY_GEMINI_API_KEY' && keyEnv !== 'MY_DEEPSEEK_API_KEY',
+      ...resolveLlmConfig(),
+      hasApiKey: hasLlmApiKey(),
     });
   });
 
   app.post('/api/v1/config', (req, res) => {
     const { provider, model, baseUrl, apiKey } = req.body;
-    if (provider) {
-      apiConfig.provider = provider;
-      process.env.LLM_PROVIDER = provider;
-    }
-    if (model) {
-      apiConfig.model = model;
-      process.env.LLM_MODEL = model;
-    }
-    if (baseUrl) {
-      apiConfig.baseUrl = baseUrl;
-      process.env.LLM_BASE_URL = baseUrl;
-    }
-    if (apiKey) {
-      // Store into the environment variable matching the active provider.
-      if (apiConfig.provider === 'deepseek') {
-        process.env.DEEPSEEK_API_KEY = apiKey;
-      } else {
-        process.env.GEMINI_API_KEY = apiKey;
-      }
+    if (provider && provider !== 'openai-compatible') {
+      res.status(400).json({ error: 'Only the openai-compatible provider is supported.' });
+      return;
     }
 
-    const providerActive = apiConfig.provider === 'deepseek' ? 'deepseek' : 'gemini';
-    const keyEnv = providerActive === 'deepseek' ? process.env.DEEPSEEK_API_KEY : process.env.GEMINI_API_KEY;
+    process.env.LLM_PROVIDER = 'openai-compatible';
+    if (typeof model === 'string') process.env.LLM_MODEL = model;
+    if (typeof baseUrl === 'string') process.env.LLM_BASE_URL = baseUrl;
+    if (typeof apiKey === 'string') process.env.LLM_API_KEY = apiKey;
+
     res.json({
       status: 'ok',
-      config: { ...apiConfig, provider: providerActive, hasApiKey: !!keyEnv },
+      config: { ...resolveLlmConfig(), hasApiKey: hasLlmApiKey() },
     });
   });
 
@@ -286,7 +264,7 @@ async function startServer() {
     res.json({ status: 'ok', character: updatedChar });
   });
 
-  // 9. NPC Dialogue (Gemini AI Powered)
+  // 9. NPC Dialogue (provider-neutral LLM)
   app.post('/api/v1/characters/:id/dialogue', async (req, res) => {
     const { message } = req.body;
     if (!message) {

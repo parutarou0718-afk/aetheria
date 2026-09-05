@@ -3,161 +3,107 @@ import { globalWorld } from './worldState';
 import { generateJson, hasLlmApiKey } from './llm/llmClient';
 
 export class NPCCognitionEngine {
-  public static addMemory(characterId: string, text: string, importance: number = 3) {
+  public static addMemory(characterId: string, text: string, importance = 3) {
     const npc = globalWorld.characters.get(characterId);
     if (!npc) return;
 
-    npc.memory.short_term.push({
-      text,
-      importance,
-      epoch: globalWorld.snapshot.epoch,
-    });
-
-    // Auto forge / compress if memory grows beyond 15 items
-    if (npc.memory.short_term.length > 15) {
-      this.forgeMemory(npc);
-    }
+    npc.memory.short_term.push({ text, importance, epoch: globalWorld.snapshot.epoch });
+    if (npc.memory.short_term.length > 15) this.forgeMemory(npc);
   }
 
   public static forgeMemory(npc: Character) {
     if (npc.memory.short_term.length === 0) return;
-    const itemsText = npc.memory.short_term.map((m) => m.text).join(' | ');
+    const itemsText = npc.memory.short_term.map((memory) => memory.text).join(' | ');
     npc.memory.compressed = npc.memory.compressed
-      ? `${npc.memory.compressed} [纪元归档: ${itemsText}]`
+      ? `${npc.memory.compressed} [Epoch ${globalWorld.snapshot.epoch}: ${itemsText}]`
       : itemsText;
-    // Keep top 5 important memories
-    npc.memory.short_term.sort((a, b) => b.importance - a.importance);
+    npc.memory.short_term.sort((left, right) => right.importance - left.importance);
     npc.memory.short_term = npc.memory.short_term.slice(0, 5);
   }
 
   public static recallMemories(npc: Character, query: string): string[] {
     const results: string[] = [];
-    const lowerQ = query.toLowerCase();
-
-    for (const m of npc.memory.short_term) {
-      if (m.text.toLowerCase().includes(lowerQ) || results.length < 3) {
-        results.push(m.text);
-      }
+    const lowerQuery = query.toLowerCase();
+    for (const memory of npc.memory.short_term) {
+      if (memory.text.toLowerCase().includes(lowerQuery) || results.length < 3) results.push(memory.text);
     }
-    if (npc.memory.compressed && results.length < 5) {
-      results.push(`【过往档案】: ${npc.memory.compressed}`);
-    }
+    if (npc.memory.compressed && results.length < 5) results.push(`Earlier memories: ${npc.memory.compressed}`);
     return results;
   }
 
   public static async generateNPCDialogue(
     npcId: string,
     playerMessage: string,
-    playerCharacterName: string = '卡尔'
-  ): Promise<{
-    reply: string;
-    trustDelta: number;
-    favorDelta: number;
-    actionTriggered?: string;
-  }> {
+    playerCharacterName = 'Traveler'
+  ): Promise<{ reply: string; trustDelta: number; favorDelta: number; actionTriggered?: string }> {
     const npc = globalWorld.characters.get(npcId);
-    if (!npc) {
-      return { reply: 'NPC不存在。', trustDelta: 0, favorDelta: 0 };
-    }
+    if (!npc) return { reply: 'This character is unavailable.', trustDelta: 0, favorDelta: 0 };
 
     const recalledMemories = this.recallMemories(npc, playerMessage);
-
     if (!hasLlmApiKey()) {
-      // Rule-based fallback if no Gemini key
-      const fallbackReplies: Record<string, string> = {
-        'npc-old-lo': `${npc.name} 抹了抹手上的铁屑，粗声说道：“小伙子，铁冠城现在不太平静。古矿坑的震动和阴影巷的黑鸦都不是好惹的... 你有事要找我打铁，还是想打听那批货？”`,
-        'npc-lilith': `${npc.name} 优雅地把玩着黑匕首，嘴角微微勾起：“游浪者${playerCharacterName}，黑鸦商会欢迎聪明人。你在老洛店里看到的，最好留在心里。”`,
-        'npc-elwin': `${npc.name} 握紧战锤，目光如炬：“${playerCharacterName}，守卫团正在全力维持秩序。如果你有阴影巷走私的新线索，立即禀报！”`,
-      };
-
-      const reply =
-        fallbackReplies[npcId] ||
-        `${npc.name} 仔细端详着你：“有什么事吗？在铁冠城说话最好小心点。”`;
-
-      this.addMemory(npcId, `与玩家${playerCharacterName}交谈: "${playerMessage}" -> 回复了对方`, 2);
-
+      const reply = this.buildFallbackReply(npc, playerCharacterName, recalledMemories);
+      this.addMemory(npcId, `${playerCharacterName}: "${playerMessage}"`, 2);
       return {
         reply,
-        trustDelta: playerMessage.includes('帮忙') || playerMessage.includes('合作') ? 2 : 0,
-        favorDelta: playerMessage.includes('老洛') || playerMessage.includes('朋友') ? 3 : 0,
+        trustDelta: /help|thanks|thank you|帮助|谢谢/i.test(playerMessage) ? 2 : 0,
+        favorDelta: /gift|give|礼物|赠送/i.test(playerMessage) ? 3 : 0,
       };
     }
 
     try {
-      globalWorld.totalLLMCalls++;
-      globalWorld.llmCallsThisEpoch++;
-
-      const worldName = globalWorld.snapshot.world_name || '原初界域';
-      const systemPrompt = `你是在 AI-Native RPG 世界【${worldName}】中扮演 NPC 的深度角色扮演引擎。
-扮演角色信息:
-- 姓名: ${npc.name} (${npc.title})
-- 种族/年龄: ${npc.species}, ${npc.age}岁
-- 身份/阵营: 位于 ${npc.location_id}
-- 主要目标: ${npc.goal.primary}
-- 内心恐惧: ${npc.fear}
-- 性格标签: ${npc.personality.join(', ')}
-- 当前检索到的重要记忆: ${recalledMemories.join('; ')}
-
-玩家名称: ${playerCharacterName}
-玩家说: "${playerMessage}"
-
-请完全以 ${npc.name} 第一人称口吻进行沉浸式 RPG 回复！
-要求:
-1. 符合 NPC 的性格特征、语气口吻和个人利益。
-2. 可以展示心理活动（放在括号中）。
-3. 字数在 80-180 字之间。
-4. 返回 JSON 格式，结构为:
-{
-  "reply": "NPC对话内容...",
-  "trustDelta": 0, (整数 -5 到 5)
-  "favorDelta": 0 (整数 -5 到 5)
-}`;
-
-      const parsed = await generateJson(
-        systemPrompt,
-        'Return only the requested JSON object.',
-        { timeoutMs: 60000 }
-      ) as any;
-
+      globalWorld.totalLLMCalls += 1;
+      globalWorld.llmCallsThisEpoch += 1;
+      const location = globalWorld.locations.get(npc.location_id);
+      const systemPrompt = `You roleplay ${npc.name}, a ${npc.title} in ${globalWorld.snapshot.world_name}.
+Location: ${location?.name || 'an unknown place'}.
+Goal: ${npc.goal.primary}. Personality: ${npc.personality.join(', ')}.
+Relevant memories: ${recalledMemories.join('; ') || 'none'}.
+Player ${playerCharacterName} says: "${playerMessage}".
+Reply in character and return JSON only: {"reply":"string","trustDelta":0,"favorDelta":0}.`;
+      const parsed = await generateJson(systemPrompt, 'Return only the requested JSON object.', { timeoutMs: 60000 }) as any;
       const trustDelta = typeof parsed.trustDelta === 'number' ? parsed.trustDelta : 0;
       const favorDelta = typeof parsed.favorDelta === 'number' ? parsed.favorDelta : 0;
-      const reply = parsed.reply || `${npc.name} 沉吟了片刻...`;
+      const reply = typeof parsed.reply === 'string' && parsed.reply.trim() ? parsed.reply : `${npc.name} considers your words.`;
 
-      // Update relationships
-      const playerChar = globalWorld.characters.get('pc-player');
-      if (playerChar) {
-        let rel = npc.relationships.find((r) => r.target_id === playerChar.id);
-        if (!rel) {
-          rel = {
-            target_id: playerChar.id,
-            target_name: playerChar.name,
+      const player = globalWorld.characters.get('pc-player');
+      if (player) {
+        let relationship = npc.relationships.find((item) => item.target_id === player.id);
+        if (!relationship) {
+          relationship = {
+            target_id: player.id,
+            target_name: player.name,
             type: 'NEUTRAL',
             trust: 50,
             fear: 0,
             favor: 50,
             last_interaction_epoch: globalWorld.snapshot.epoch,
           };
-          npc.relationships.push(rel);
+          npc.relationships.push(relationship);
         }
-        rel.trust = Math.max(0, Math.min(100, rel.trust + trustDelta));
-        rel.favor = Math.max(0, Math.min(100, rel.favor + favorDelta));
-        rel.last_interaction_epoch = globalWorld.snapshot.epoch;
+        relationship.trust = Math.max(0, Math.min(100, relationship.trust + trustDelta));
+        relationship.favor = Math.max(0, Math.min(100, relationship.favor + favorDelta));
+        relationship.last_interaction_epoch = globalWorld.snapshot.epoch;
       }
 
-      this.addMemory(npcId, `与${playerCharacterName}交谈: "${playerMessage}"`, 3);
-
+      this.addMemory(npcId, `${playerCharacterName}: "${playerMessage}"`, 3);
+      return { reply, trustDelta, favorDelta };
+    } catch (error) {
+      console.error('NPC dialogue generation failed:', error);
       return {
-        reply,
-        trustDelta,
-        favorDelta,
-      };
-    } catch (err: any) {
-      console.error('NPC Gemini Dialogue Error:', err);
-      return {
-        reply: `${npc.name} 看了你一眼，缓缓说道：“现在铁冠城暗流涌动，我们要警惕四周...”`,
+        reply: this.buildFallbackReply(npc, playerCharacterName, recalledMemories),
         trustDelta: 0,
         favorDelta: 0,
       };
     }
+  }
+
+  private static buildFallbackReply(npc: Character, playerCharacterName: string, memories: string[]): string {
+    const location = globalWorld.locations.get(npc.location_id);
+    const worldName = globalWorld.profile?.display_name || globalWorld.snapshot.world_name;
+    const context = memories[0] || npc.goal.primary || 'the situation around us';
+    if (location?.name || worldName) {
+      return `${npc.name} pauses in ${location?.name || worldName} before replying to ${playerCharacterName}: “${context}.”`;
+    }
+    return `${npc.name} considers your words before replying to ${playerCharacterName}.`;
   }
 }

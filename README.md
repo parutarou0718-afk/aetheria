@@ -5,7 +5,7 @@
 ![React 19](https://img.shields.io/badge/React-19.0-61DAFB?logo=react&logoColor=black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript&logoColor=white)
 ![TailwindCSS v4](https://img.shields.io/badge/TailwindCSS-v4-06B6D4?logo=tailwindcss&logoColor=white)
-![Gemini API](https://img.shields.io/badge/Gemini_API-%40google%2Fgenai-4285F4?logo=google&logoColor=white)
+![LLM API](https://img.shields.io/badge/LLM-OpenAI--compatible-4B8BBE)
 ![SQLite WAL](https://img.shields.io/badge/SQLite-WASM%2FTransaction-003B57?logo=sqlite&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
@@ -41,7 +41,7 @@
 * **前端 (Frontend)**: React 19, TypeScript, Tailwind CSS v4, Motion (Framer Motion), Lucide React
 * **后端 (Backend)**: Express, Node.js (CommonJS Bundled via Esbuild)
 * **数据库 (Database)**: WASM SQLite / sql.js 事务持久化 (`aetheria.db`)
-* **AI 引擎 (AI Engine)**: Google Gemini API (`@google/genai` SDK，采用服务端安全代理模式)
+* **AI 引擎 (AI Engine)**: Provider-neutral / OpenAI-compatible LLM API；可通过 OpenAI-compatible endpoint 配置不同兼容模型服务。
 * **构建与测试**: Vite, Esbuild, Vitest, TypeScript `tsc --noEmit`
 
 ---
@@ -65,7 +65,7 @@ npx vitest run
 
 ```
 .
-├── server.ts                   # Express 后端服务 & API 路由 (Gemini API 代理)
+├── server.ts                   # Express 后端服务 & API 路由 (Provider-neutral LLM 配置)
 ├── src/
 │   ├── App.tsx                 # 应用主入口组件与布局控制
 │   ├── components/             # UI 功能组件

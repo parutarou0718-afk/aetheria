@@ -38,4 +38,15 @@ describe('DM LLM integration', () => {
     expect(llm.generateJson).toHaveBeenCalledOnce();
     expect(response.dmNarration).toBe('The stars answer.');
   });
+
+  it('does not report an epoch advance when DM action resolution fails', async () => {
+    llm.hasLlmApiKey.mockReturnValue(true);
+    llm.generateJson.mockRejectedValue(new Error('upstream unavailable'));
+
+    const response = await DMEngine.processPlayerAction('Look upward.');
+
+    expect(response.stateUpdatesSummary).toEqual([
+      'Action resolution failed; no DM-generated state change was committed.',
+    ]);
+  });
 });

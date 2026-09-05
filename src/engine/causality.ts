@@ -107,12 +107,23 @@ export class CausalityEngine {
     });
 
     if (proposals.length === 0) return [];
-    return (await recorder.commit('world-snapshot-001', proposals)).eventsGenerated;
+    const worldId = globalWorld.snapshot.id;
+    if (!worldId) {
+      throw new Error('Cannot commit causality proposals without an active world id.');
+    }
+    return (await recorder.commit(worldId, proposals)).eventsGenerated;
   }
 
   public static async generateDeepCausalityEvaluation(): Promise<string> {
     if (!hasLlmApiKey()) {
-      return 'AI 密钥未配置，使用标准规则推演世界因果：当前铁冠城局势处于微妙平衡，圣光守卫团与黑鸦商会在古矿坑外围胶着。';
+      const worldName = globalWorld.profile?.display_name || globalWorld.snapshot.world_name || 'the current world';
+      const organizations = Array.from(globalWorld.organizations.values()).map((organization) => organization.name);
+      const activeSeeds = Array.from(globalWorld.seeds.values())
+        .filter((seed) => seed.status === 'IN_PROGRESS')
+        .map((seed) => seed.visible_layer.description);
+      const organizationSummary = organizations.length > 0 ? organizations.join(', ') : 'no active organizations';
+      const seedSummary = activeSeeds.length > 0 ? activeSeeds.join('; ') : 'no active seeds';
+      return `Deterministic causality forecast for ${worldName}: organizations: ${organizationSummary}. Active developments: ${seedSummary}.`;
     }
 
     try {

@@ -434,7 +434,7 @@ export default function App() {
             <div className="flex justify-between items-center text-indigo-300 font-bold">
               <span className="flex items-center gap-1.5">
                 <Sparkles className="w-4 h-4 text-indigo-400" />
-                Gemini 2.5 Flash - 深层因果律推演结果:
+                Provider-neutral LLM - 深层因果律推演结果:
               </span>
               <button
                 onClick={() => setDeductionText('')}

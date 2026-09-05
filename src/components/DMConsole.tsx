@@ -167,7 +167,7 @@ export const DMConsole: React.FC<DMConsoleProps> = ({
             <h2 className="text-xs sm:text-sm font-bold text-slate-100 flex items-center gap-1.5 sm:gap-2">
               AI 地下城主 (DM) 主控台
               <span className="px-1.5 sm:px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[9px] sm:text-[10px] font-mono border border-amber-500/30">
-                Gemini 2.5 Flash • Profile Driven
+                OpenAI-compatible LLM • Profile Driven
               </span>
             </h2>
             <p className="text-[10px] sm:text-[11px] text-slate-400 hidden xs:block">自然语言自由行动或询问 • DM 遵循世界宪法与绝对公理推演</p>
