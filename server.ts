@@ -13,38 +13,126 @@ import { WorldBootstrap } from './src/engine/world/worldBootstrap';
 import { WorldRepository } from './src/engine/world/worldRepository';
 import { WorldResetService } from './src/engine/world/worldResetService';
 import { WorldGenesisService } from './src/engine/worldGeneration/worldGenesisService';
-import { recorder } from './src/engine/recorder/recorder';
 import { StateChangeProposal } from './src/engine/recorder/changeSchemas';
 
 import { TransactionService } from './src/engine/timeline/transactionService';
 import { CheckpointProcessor } from './src/engine/timeline/checkpointProcessor';
 import { GlobalTimeline } from './src/engine/timeline/globalTimeline';
 import { TimelineError } from './src/engine/timeline/timelineErrors';
-import { getPublicLlmConfig } from './src/engine/llm/llmClient';
+import { aiService } from './src/engine/ai/aiService';
+import { createStateChangeProposal } from './src/engine/proposal/proposalFactory';
+import { proposalPipeline } from './src/engine/proposal/proposalPipeline';
 
 dotenv.config();
 
 export function registerConfigRoutes(app: express.Express): void {
   app.get('/api/v1/config', (req, res) => {
-    res.json(getPublicLlmConfig());
+    res.json({
+      aiAvailable: aiService.isAvailable({
+        userId: 'SYSTEM_USER',
+        worldId: globalWorld.snapshot.id,
+        purpose: 'DM_ACTION',
+      }),
+    });
   });
+}
 
-  app.post('/api/v1/config', (req, res) => {
-    const { provider, model, baseUrl, apiKey } = req.body;
-    if (provider && provider !== 'openai-compatible') {
-      res.status(400).json({ error: 'Only the openai-compatible provider is supported.' });
+export function registerCharacterActionRoutes(app: express.Express): void {
+  app.post('/api/v1/characters/:id/action', async (req, res) => {
+    const { action_type, target_location_id } = req.body;
+    const char = globalWorld.characters.get(req.params.id);
+    if (!char) {
+      res.status(404).json({ error: 'Character not found' });
       return;
     }
 
-    process.env.LLM_PROVIDER = 'openai-compatible';
-    if (typeof model === 'string') process.env.LLM_MODEL = model;
-    if (typeof baseUrl === 'string') process.env.LLM_BASE_URL = baseUrl;
-    if (typeof apiKey === 'string') process.env.LLM_API_KEY = apiKey;
+    const worldId = globalWorld.snapshot.id;
+    if (!worldId) {
+      res.status(503).json({ status: 'error', code: 'ACTIVE_WORLD_REQUIRED', error: 'No active world is loaded.' });
+      return;
+    }
 
-    res.json({
-      status: 'ok',
-      config: getPublicLlmConfig(),
-    });
+    const proposals: StateChangeProposal[] = [];
+    const currentEpoch = globalWorld.snapshot.epoch;
+
+    if (action_type === 'TRAVEL' && target_location_id) {
+      const targetLoc = globalWorld.locations.get(target_location_id);
+      if (targetLoc) {
+        try {
+          await TransactionService.planTravel({
+            worldId,
+            actorId: char.id,
+            destinationLocationId: target_location_id,
+            startEpoch: currentEpoch,
+          });
+        } catch (err: any) {
+          const msg = err?.message || String(err);
+          console.warn(`[Server] TransactionService.planTravel failed: ${msg}. No movement was committed.`);
+          res.status(400).json({
+            status: 'error',
+            code: 'TRAVEL_PLAN_FAILED',
+            error: `Route to ${target_location_id} is not currently feasible. No movement performed.`,
+          });
+          return;
+        }
+
+        SchedulerEngine.pushWakeSignal({
+          entity_id: char.id,
+          entity_type: 'CHARACTER',
+          reason: 'PLAYER_APPROACH',
+          epoch: currentEpoch,
+          weight: 0,
+        });
+      }
+    } else if (action_type === 'REST') {
+      proposals.push({
+        id: `prop-route-rest-${Date.now()}`,
+        operation: 'UPDATE_CHARACTER_ATTRIBUTES',
+        entityType: 'CHARACTER',
+        entityId: char.id,
+        payload: { characterId: char.id, hpDelta: 20, mpDelta: 15 },
+        effectiveEpoch: currentEpoch,
+        preconditions: [],
+        source: { type: 'PLAYER_ACTION', id: char.id },
+      });
+      proposals.push({
+        id: `prop-route-restact-${Date.now()}`,
+        operation: 'SET_CHARACTER_ACTION',
+        entityType: 'CHARACTER',
+        entityId: char.id,
+        payload: {
+          characterId: char.id,
+          action: {
+            type: 'REST',
+            description: 'Rest to recover health and energy.',
+            started_at_epoch: currentEpoch,
+            estimated_end_epoch: currentEpoch + 1,
+          },
+        },
+        effectiveEpoch: currentEpoch,
+        preconditions: [],
+        source: { type: 'PLAYER_ACTION', id: char.id },
+      });
+    }
+
+    if (proposals.length > 0) {
+      const pipelineResult = await proposalPipeline.processAndCommit({
+        worldId,
+        proposals: proposals.map((proposal) => createStateChangeProposal({
+          ...proposal,
+          reason: `Player submitted ${action_type} action.`,
+          causalBasis: [{ type: 'PLAYER_ACTION', id: char.id, description: `REST action submitted by ${char.name}.` }],
+          authorityLevel: 'ACTOR',
+        })),
+      });
+      if (!pipelineResult.success) {
+        res.status(400).json({ status: 'error', code: 'ACTION_RESOLUTION_FAILED', error: 'Action resolution was not committed.' });
+        return;
+      }
+    }
+
+    const updatedChar = globalWorld.characters.get(req.params.id);
+    res.json({ status: 'ok', character: updatedChar });
   });
 }
 
@@ -178,92 +266,7 @@ async function startServer() {
     res.json(dmResult);
   });
 
-  app.post('/api/v1/characters/:id/action', async (req, res) => {
-    const { action_type, target_location_id, details } = req.body;
-    const char = globalWorld.characters.get(req.params.id);
-    if (!char) {
-      res.status(404).json({ error: 'Character not found' });
-      return;
-    }
-
-    const proposals: StateChangeProposal[] = [];
-    const currentEpoch = globalWorld.snapshot.epoch;
-
-    if (action_type === 'TRAVEL' && target_location_id) {
-      const targetLoc = globalWorld.locations.get(target_location_id);
-      if (targetLoc) {
-        try {
-          await TransactionService.planTravel({
-            worldId: 'world-snapshot-001',
-            actorId: char.id,
-            destinationLocationId: target_location_id,
-            startEpoch: currentEpoch,
-          });
-        } catch (err: any) {
-          // [P0-1] Travel planning failure must NOT silently teleport the actor.
-          // Return a truthful error; do NOT submit any MOVE_CHARACTER bypass, do NOT mutate
-          // location/presence/transaction, do NOT fabricate a successful travel narration.
-          const msg = err?.message || String(err);
-          console.warn(`[Server] TransactionService.planTravel failed: ${msg}. No movement was committed.`);
-          res.status(400).json({
-            status: 'error',
-            code: 'TRAVEL_PLAN_FAILED',
-            error: `Route to ${target_location_id} is not currently feasible. No movement performed.`,
-          });
-          return;
-        }
-
-        SchedulerEngine.pushWakeSignal({
-          entity_id: char.id,
-          entity_type: 'CHARACTER',
-          reason: 'PLAYER_APPROACH',
-          epoch: currentEpoch,
-          weight: 0,
-        });
-      }
-    } else if (action_type === 'REST') {
-      proposals.push({
-        id: `prop-route-rest-${Date.now()}`,
-        operation: 'UPDATE_CHARACTER_ATTRIBUTES',
-        entityType: 'CHARACTER',
-        entityId: char.id,
-        payload: {
-          characterId: char.id,
-          hpDelta: 20,
-          mpDelta: 15,
-        },
-        effectiveEpoch: currentEpoch,
-        preconditions: [],
-        source: { type: 'PLAYER_ACTION' },
-      });
-
-      proposals.push({
-        id: `prop-route-restact-${Date.now()}`,
-        operation: 'SET_CHARACTER_ACTION',
-        entityType: 'CHARACTER',
-        entityId: char.id,
-        payload: {
-          characterId: char.id,
-          action: {
-            type: 'REST',
-            description: '在旅店静养恢复生命与精力',
-            started_at_epoch: currentEpoch,
-            estimated_end_epoch: currentEpoch + 1,
-          },
-        },
-        effectiveEpoch: currentEpoch,
-        preconditions: [],
-        source: { type: 'PLAYER_ACTION' },
-      });
-    }
-
-    if (proposals.length > 0) {
-      await recorder.commit('world-snapshot-001', proposals);
-    }
-
-    const updatedChar = globalWorld.characters.get(req.params.id);
-    res.json({ status: 'ok', character: updatedChar });
-  });
+  registerCharacterActionRoutes(app);
 
   // 9. NPC Dialogue (provider-neutral LLM)
   app.post('/api/v1/characters/:id/dialogue', async (req, res) => {

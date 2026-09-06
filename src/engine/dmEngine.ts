@@ -161,6 +161,7 @@ ${axiomsFormatted}
 
       const updatesSummary: string[] = [];
       const proposals: StateChangeProposal[] = [];
+      const timelineExecutionProposals: StateChangeProposal[] = [];
       const currentEpoch = globalWorld.snapshot.epoch;
 
       // Handle character updates
@@ -257,7 +258,7 @@ ${axiomsFormatted}
             destinationLocationId: parsed.targetLocationId,
             startEpoch: currentEpoch,
           });
-          proposals.push(...travelPlan.proposals);
+          timelineExecutionProposals.push(...travelPlan.proposals);
           const locName = globalWorld.locations.get(parsed.targetLocationId)?.name || parsed.targetLocationId;
           updatesSummary.push(`📍 开启旅程: 【${locName}】(预计耗时 ${travelPlan.totalEpochs} 周期)`);
         } catch (err) {
@@ -340,19 +341,38 @@ ${axiomsFormatted}
         source: { type: 'LLM', id: 'dmEngine' },
       });
 
-      // Commit all proposals authoritatively via Recorder
-      if (proposals.length > 0) {
-        const commitResult = await proposalPipeline.processAndCommit({
+      // Keep player/LLM outcomes and timeline execution in one atomic batch,
+      // while preserving their distinct authorities.
+      if (proposals.length > 0 || timelineExecutionProposals.length > 0) {
+        const pipelineResult = await proposalPipeline.processAndCommit({
           worldId: globalWorld.snapshot.id || 'world-snapshot-001',
-          proposals: proposals.map((proposal) => createStateChangeProposal({
-            ...proposal,
-            reason: `Resolve player action: ${playerActionText}`,
-            causalBasis: [{ type: 'PLAYER_ACTION', description: playerActionText }],
-            authorityLevel: 'ACTOR',
-          })),
+          proposals: [
+            ...proposals.map((proposal) => createStateChangeProposal({
+              ...proposal,
+              reason: `Resolve player action: ${playerActionText}`,
+              causalBasis: [{ type: 'PLAYER_ACTION', description: playerActionText }],
+              authorityLevel: 'ACTOR',
+            })),
+            ...timelineExecutionProposals.map((proposal) => createStateChangeProposal({
+              ...proposal,
+              reason: 'Execute approved timeline travel transaction.',
+              causalBasis: [{
+                type: 'SYSTEM_EVENT',
+                id: proposal.entityId || proposal.id,
+                description: 'The travel transaction reached its execution point.',
+              }],
+              authorityLevel: 'SYSTEM',
+            })),
+          ],
         });
-        if (!commitResult.success) {
-          console.warn('[DMEngine] Proposal pipeline warnings/errors:', commitResult.rejected.map((rejection) => rejection.message));
+        if (!pipelineResult.success) {
+          console.warn('[DMEngine] Proposal pipeline rejected action resolution:', pipelineResult.rejected.map((rejection) => rejection.message));
+          return {
+            dmNarration: buildDmErrorNarration(narratorRole),
+            stateUpdatesSummary: ['Action resolution failed; no DM-generated state change was committed.'],
+            currentLocationName: currentLocation?.name || '未知位置',
+            epoch: globalWorld.snapshot.epoch,
+          };
         }
       }
 

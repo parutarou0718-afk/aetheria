@@ -3,8 +3,6 @@ import type { Server } from 'node:http';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { registerConfigRoutes } from '../server';
 
-const envKeys = ['LLM_PROVIDER', 'LLM_API_KEY', 'LLM_BASE_URL', 'LLM_MODEL'] as const;
-const originalEnv = new Map<string, string | undefined>();
 let server: Server | undefined;
 
 async function startConfigServer(): Promise<string> {
@@ -21,39 +19,25 @@ async function startConfigServer(): Promise<string> {
 }
 
 describe('HTTP LLM configuration secret safety', () => {
-  beforeEach(() => {
-    for (const key of envKeys) originalEnv.set(key, process.env[key]);
-  });
-
   afterEach(async () => {
     await new Promise<void>((resolve, reject) => {
       if (!server) return resolve();
       server.close((error) => error ? reject(error) : resolve());
       server = undefined;
     });
-    for (const key of envKeys) {
-      const original = originalEnv.get(key);
-      if (original === undefined) delete process.env[key];
-      else process.env[key] = original;
-    }
-    originalEnv.clear();
   });
 
-  it('GET config never returns a configured API key', async () => {
-    process.env.LLM_API_KEY = 'super-secret-test-key';
+  it('GET config exposes only public AI availability', async () => {
     const baseUrl = await startConfigServer();
 
     const response = await fetch(`${baseUrl}/api/v1/config`);
     const body = await response.json();
-    const serialized = JSON.stringify(body);
 
     expect(response.status).toBe(200);
-    expect(body.hasApiKey).toBe(true);
-    expect(body).not.toHaveProperty('apiKey');
-    expect(serialized).not.toContain('super-secret-test-key');
+    expect(body).toEqual({ aiAvailable: expect.any(Boolean) });
   });
 
-  it('POST config stores a supplied key without returning it', async () => {
+  it('does not expose a runtime configuration write endpoint', async () => {
     const baseUrl = await startConfigServer();
     const response = await fetch(`${baseUrl}/api/v1/config`, {
       method: 'POST',
@@ -65,13 +49,6 @@ describe('HTTP LLM configuration secret safety', () => {
         apiKey: 'another-secret-test-key',
       }),
     });
-    const body = await response.json();
-    const serialized = JSON.stringify(body);
-
-    expect(response.status).toBe(200);
-    expect(process.env.LLM_API_KEY).toBe('another-secret-test-key');
-    expect(body.config.hasApiKey).toBe(true);
-    expect(body.config).not.toHaveProperty('apiKey');
-    expect(serialized).not.toContain('another-secret-test-key');
+    expect(response.status).toBe(404);
   });
 });
