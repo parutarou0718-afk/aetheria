@@ -1,8 +1,9 @@
 import { CausalityPressure, Event } from '../types';
 import { globalWorld } from './worldState';
-import { recorder } from './recorder/recorder';
 import { StateChangeProposal } from './recorder/changeSchemas';
 import { aiService } from './ai/aiService';
+import { createStateChangeProposal } from './proposal/proposalFactory';
+import { proposalPipeline } from './proposal/proposalPipeline';
 
 export class CausalityEngine {
   public static evaluatePressures(): CausalityPressure[] {
@@ -111,7 +112,16 @@ export class CausalityEngine {
     if (!worldId) {
       throw new Error('Cannot commit causality proposals without an active world id.');
     }
-    return (await recorder.commit(worldId, proposals)).eventsGenerated;
+    const result = await proposalPipeline.commit({
+      worldId,
+      proposals: proposals.map((proposal) => createStateChangeProposal({
+        ...proposal,
+        reason: 'Advance active simulation seed.',
+        causalBasis: [{ type: 'SYSTEM_EVENT', id: proposal.entityId, description: 'Simulation seed reached its scheduled evaluation.' }],
+        authorityLevel: 'SYSTEM',
+      })),
+    });
+    return result.commitResult?.eventsGenerated ?? [];
   }
 
   public static async generateDeepCausalityEvaluation(): Promise<string> {

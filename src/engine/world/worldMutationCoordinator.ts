@@ -1,7 +1,8 @@
-import { recorder } from '../recorder/recorder';
 import { StateChangeProposal, CommitResult } from '../recorder/changeSchemas';
 import { DependencyImpactService } from '../dependency/dependencyImpactService';
 import { DependencyTargetRef, CausalPropagationContext } from '../dependency/dependencyTypes';
+import { createStateChangeProposal } from '../proposal/proposalFactory';
+import { proposalPipeline } from '../proposal/proposalPipeline';
 
 export interface CoordinatedCommitResult {
   commitResult: CommitResult;
@@ -28,7 +29,28 @@ export class WorldMutationCoordinator {
     epoch?: number,
     context?: CausalPropagationContext
   ): Promise<CoordinatedCommitResult> {
-    const commitResult = await recorder.commit(worldId, proposals);
+    const pipelineResult = await proposalPipeline.commit({
+      worldId,
+      proposals: proposals.map((proposal) => createStateChangeProposal({
+        ...proposal,
+        reason: 'Execute approved timeline or scheduler transaction.',
+        causalBasis: [{
+          type: 'SYSTEM_EVENT',
+          id: proposal.entityId || proposal.id,
+          description: 'Approved system transaction reached its execution point.',
+        }],
+        authorityLevel: 'SYSTEM',
+      })),
+    });
+    const commitResult = pipelineResult.commitResult ?? {
+      success: false,
+      committedCount: 0,
+      appliedProposalIds: [],
+      proposalResults: [],
+      errors: pipelineResult.rejected.map((rejection) => rejection.message),
+      eventsGenerated: [],
+      epoch: epoch ?? 0,
+    };
 
     let evaluatedDependencies = 0;
     let invalidatedDependencies = 0;

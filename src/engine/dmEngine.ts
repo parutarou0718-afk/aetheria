@@ -3,8 +3,9 @@ import { SchedulerEngine } from './scheduler';
 import { CausalityEngine } from './causality';
 import { TruthsEngine } from './truthsEngine';
 import { Location } from '../types';
-import { recorder } from './recorder/recorder';
 import { StateChangeProposal } from './recorder/changeSchemas';
+import { createStateChangeProposal } from './proposal/proposalFactory';
+import { proposalPipeline } from './proposal/proposalPipeline';
 import { TransactionService } from './timeline/transactionService';
 import {
   buildDmFallbackNarration,
@@ -341,9 +342,17 @@ ${axiomsFormatted}
 
       // Commit all proposals authoritatively via Recorder
       if (proposals.length > 0) {
-        const commitRes = await recorder.commit(globalWorld.snapshot.id || 'world-snapshot-001', proposals);
-        if (!commitRes.success) {
-          console.warn('[DMEngine] Recorder commit warnings/errors:', commitRes.errors);
+        const commitResult = await proposalPipeline.commit({
+          worldId: globalWorld.snapshot.id || 'world-snapshot-001',
+          proposals: proposals.map((proposal) => createStateChangeProposal({
+            ...proposal,
+            reason: `Resolve player action: ${playerActionText}`,
+            causalBasis: [{ type: 'PLAYER_ACTION', description: playerActionText }],
+            authorityLevel: 'ACTOR',
+          })),
+        });
+        if (!commitResult.success) {
+          console.warn('[DMEngine] Proposal pipeline warnings/errors:', commitResult.rejected.map((rejection) => rejection.message));
         }
       }
 
