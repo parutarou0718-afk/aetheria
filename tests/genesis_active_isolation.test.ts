@@ -2,14 +2,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // [audit #9] Genesis must fully replace the active world cache — no default-theme entity residue.
 // P0-2 (方案X): creating a new world must not leave default Eldlan entities in the active globalWorld.
-vi.mock('../src/engine/llm/llmClient', () => ({
-  generateJson: vi.fn(async (_system: string, user: string) => {
+vi.mock('../src/engine/ai/aiService', () => ({ aiService: {
+  generateJson: vi.fn(async (_context: unknown, _system: string, user: string) => {
     if (user.includes('User Vision:')) return mockProfileJson();
     if (user.includes('Locations Available:')) return mockEntityJson();
     return mockSkeletonJson();
   }),
-  LlmError: class LlmError extends Error {},
-}));
+} }));
 
 import { WorldGenesisService } from '../src/engine/worldGeneration/worldGenesisService';
 import { globalWorld, setRecorderWriteContext } from '../src/engine/worldState';

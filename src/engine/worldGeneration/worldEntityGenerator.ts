@@ -3,7 +3,7 @@ import { Location, Character, Organization, Seed, Event, WorldFact } from '../..
 import { SkeletonGeneratorOutput } from './worldSkeletonGenerator';
 import { DeterministicIdFactory } from './deterministicIdFactory';
 import { ZodEntityOutput } from './zodSchemas';
-import { generateJson } from '../llm/llmClient';
+import { aiService } from '../ai/aiService';
 import { WorldEntityGenerationError } from '../worldProfile/worldProfileErrors';
 
 export interface EntityGeneratorOutput {
@@ -98,7 +98,7 @@ Return JSON ONLY matching structure:
   "genesisEventDescription": "string"
 }`;
 
-    const parsed = await this.invokeAi(system, user);
+    const parsed = await this.invokeAi(system, user, profile.world_id);
 
     try {
       const validated = ZodEntityOutput.safeParse(parsed);
@@ -116,9 +116,9 @@ Return JSON ONLY matching structure:
     }
   }
 
-  private static async invokeAi(system: string, user: string): Promise<any> {
+  private static async invokeAi(system: string, user: string, worldId: string): Promise<any> {
     try {
-      return await generateJson(system, user, {
+      return await aiService.generateJson({ userId: 'SYSTEM_USER', worldId, purpose: 'WORLD_ENTITY_GENERATION' }, system, user, {
         timeoutMs: 30000,
         jsonSchemaHint:
           'Return strictly a JSON object with keys "characters", "organizations", "facts", "seeds", "genesisEventDescription".',

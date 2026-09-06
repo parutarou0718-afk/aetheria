@@ -3,7 +3,7 @@ import { WorldProfile } from '../worldProfile/worldProfileTypes';
 import { WorldAxiom } from './worldAxiomTypes';
 import { DeterministicIdFactory } from './deterministicIdFactory';
 import { ZodWorldProfileOutput } from './zodSchemas';
-import { generateJson } from '../llm/llmClient';
+import { aiService } from '../ai/aiService';
 import { WorldProfileGenerationError } from '../worldProfile/worldProfileErrors';
 
 export interface ProfileGeneratorOutput {
@@ -99,7 +99,7 @@ Return JSON ONLY matching this structure:
 
     let parsed: any;
     try {
-      parsed = await generateJson(system, user, {
+      parsed = await aiService.generateJson({ userId: 'SYSTEM_USER', worldId: request.worldId, purpose: 'WORLD_PROFILE' }, system, user, {
         timeoutMs: 30000,
         jsonSchemaHint: 'Return strictly a JSON object matching the World Profile schema above.',
       });

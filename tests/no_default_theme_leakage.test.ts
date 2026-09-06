@@ -1,14 +1,13 @@
 import { describe, it, expect, vi } from 'vitest';
 
 // [audit #8] Keep genesis fully offline & deterministic — never call a real LLM.
-vi.mock('../src/engine/llm/llmClient', () => ({
-  generateJson: vi.fn(async (_system: string, user: string) => {
+vi.mock('../src/engine/ai/aiService', () => ({ aiService: {
+  generateJson: vi.fn(async (_context: unknown, _system: string, user: string) => {
     if (user.includes('User Vision:')) return mockProfileJson();
     if (user.includes('Locations Available:')) return mockEntityJson();
     return mockSkeletonJson();
   }),
-  LlmError: class LlmError extends Error {},
-}));
+} }));
 
 import { WorldGenesisService } from '../src/engine/worldGeneration/worldGenesisService';
 import { WorldGenerationValidator } from '../src/engine/worldGeneration/worldGenerationValidator';

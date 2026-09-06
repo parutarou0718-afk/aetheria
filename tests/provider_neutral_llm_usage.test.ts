@@ -26,4 +26,15 @@ describe('runtime LLM boundaries', () => {
       expect(readFileSync(file, 'utf8')).not.toMatch(forbidden);
     }
   });
+
+  it('keeps runtime modules behind the AIService boundary', () => {
+    const root = process.cwd();
+    const runtimeFiles = [
+      'src/engine/dmEngine.ts', 'src/engine/npcCognition.ts', 'src/engine/causality.ts',
+      'src/engine/worldGeneration/worldProfileGenerator.ts', 'src/engine/worldGeneration/worldSkeletonGenerator.ts', 'src/engine/worldGeneration/worldEntityGenerator.ts',
+    ];
+    for (const file of runtimeFiles) {
+      expect(readFileSync(resolve(root, file), 'utf8')).not.toMatch(/llm\/llmClient/);
+    }
+  });
 });

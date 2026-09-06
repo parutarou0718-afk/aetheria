@@ -2,7 +2,7 @@ import { CausalityPressure, Event } from '../types';
 import { globalWorld } from './worldState';
 import { recorder } from './recorder/recorder';
 import { StateChangeProposal } from './recorder/changeSchemas';
-import { generateText, hasLlmApiKey } from './llm/llmClient';
+import { aiService } from './ai/aiService';
 
 export class CausalityEngine {
   public static evaluatePressures(): CausalityPressure[] {
@@ -115,7 +115,8 @@ export class CausalityEngine {
   }
 
   public static async generateDeepCausalityEvaluation(): Promise<string> {
-    if (!hasLlmApiKey()) {
+    const aiContext = { userId: 'SYSTEM_USER', worldId: globalWorld.snapshot.id, purpose: 'CAUSALITY' as const };
+    if (!aiService.isAvailable(aiContext)) {
       const worldName = globalWorld.profile?.display_name || globalWorld.snapshot.world_name || 'the current world';
       const organizations = Array.from(globalWorld.organizations.values()).map((organization) => organization.name);
       const activeSeeds = Array.from(globalWorld.seeds.values())
@@ -138,7 +139,8 @@ export class CausalityEngine {
         .map((organization) => `${organization.name} (${organization.type})`)
         .join(', ');
 
-      return await generateText(
+      return await aiService.generateText(
+        aiContext,
         '你是一个 AI-Native 永恒世界 RPG 的【因果律推演引擎】。',
         `当前世界: ${globalWorld.snapshot.world_name || '原初界域'}\n世界设定: ${globalWorld.snapshot.world_description || '未知世界'}\n当前纪元 (Epoch): ${globalWorld.snapshot.epoch}\n活跃种子 Seed: ${JSON.stringify(activeSeeds, null, 2)}\n主要势力: ${organizations || '暂无主要势力'}\n\n请以符合当前世界风格、写实严谨的语气，推演 1-2 段本纪元因果树的深层涟漪 (200字以内)。`,
         { timeoutMs: 60000 }

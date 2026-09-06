@@ -12,7 +12,7 @@ import {
   buildDmPromptHeader,
   resolveNarratorRole,
 } from './dmNarrator';
-import { generateJson, hasLlmApiKey } from './llm/llmClient';
+import { aiService } from './ai/aiService';
 
 export interface DMResponse {
   dmNarration: string;
@@ -39,7 +39,8 @@ export class DMEngine {
     // Falls back to the neutral "世界演算者" when no profile is present.
     const narratorRole = resolveNarratorRole(profile);
 
-    if (!hasLlmApiKey()) {
+    const aiContext = { userId: 'SYSTEM_USER', worldId: globalWorld.snapshot.id, purpose: 'DM_ACTION' as const };
+    if (!aiService.isAvailable(aiContext)) {
       const fallbackNarration = buildDmFallbackNarration(
         narratorRole,
         playerActionText,
@@ -150,7 +151,8 @@ ${axiomsFormatted}
   "advanceEpoch": true
 }`;
 
-      const parsed = await generateJson(
+      const parsed = await aiService.generateJson(
+        aiContext,
         systemPrompt,
         'Return only the requested JSON object.',
         { timeoutMs: 60000 }

@@ -1,25 +1,25 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const llm = vi.hoisted(() => ({
-  hasLlmApiKey: vi.fn(),
+const ai = vi.hoisted(() => ({
+  isAvailable: vi.fn(),
   generateJson: vi.fn(),
 }));
 
-vi.mock('../src/engine/llm/llmClient', () => llm);
+vi.mock('../src/engine/ai/aiService', () => ({ aiService: ai }));
 
 import { DMEngine } from '../src/engine/dmEngine';
 import { bootstrapWithDefaultWorld } from './helpers/worldFixture';
 
 describe('DM LLM integration', () => {
   beforeEach(async () => {
-    llm.hasLlmApiKey.mockReset();
-    llm.generateJson.mockReset();
+    ai.isAvailable.mockReset();
+    ai.generateJson.mockReset();
     await bootstrapWithDefaultWorld();
   });
 
   it('uses the unified JSON client for structured DM responses', async () => {
-    llm.hasLlmApiKey.mockReturnValue(true);
-    llm.generateJson.mockResolvedValue({
+    ai.isAvailable.mockReturnValue(true);
+    ai.generateJson.mockResolvedValue({
       dmNarration: 'The stars answer.',
       diceRoll: null,
       characterUpdate: null,
@@ -35,13 +35,13 @@ describe('DM LLM integration', () => {
 
     const response = await DMEngine.processPlayerAction('Look upward.');
 
-    expect(llm.generateJson).toHaveBeenCalledOnce();
+    expect(ai.generateJson).toHaveBeenCalledWith(expect.objectContaining({ userId: 'SYSTEM_USER', worldId: expect.any(String), purpose: 'DM_ACTION' }), expect.any(String), expect.any(String), expect.any(Object));
     expect(response.dmNarration).toBe('The stars answer.');
   });
 
   it('does not report an epoch advance when DM action resolution fails', async () => {
-    llm.hasLlmApiKey.mockReturnValue(true);
-    llm.generateJson.mockRejectedValue(new Error('upstream unavailable'));
+    ai.isAvailable.mockReturnValue(true);
+    ai.generateJson.mockRejectedValue(new Error('upstream unavailable'));
 
     const response = await DMEngine.processPlayerAction('Look upward.');
 

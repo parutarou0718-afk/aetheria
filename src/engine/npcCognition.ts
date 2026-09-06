@@ -1,6 +1,6 @@
 import { Character, CharacterMemoryItem } from '../types';
 import { globalWorld } from './worldState';
-import { generateJson, hasLlmApiKey } from './llm/llmClient';
+import { aiService } from './ai/aiService';
 
 export class NPCCognitionEngine {
   public static addMemory(characterId: string, text: string, importance = 3) {
@@ -40,7 +40,8 @@ export class NPCCognitionEngine {
     if (!npc) return { reply: 'This character is unavailable.', trustDelta: 0, favorDelta: 0 };
 
     const recalledMemories = this.recallMemories(npc, playerMessage);
-    if (!hasLlmApiKey()) {
+    const aiContext = { userId: 'SYSTEM_USER', worldId: globalWorld.snapshot.id, purpose: 'NPC_DIALOGUE' as const };
+    if (!aiService.isAvailable(aiContext)) {
       const reply = this.buildFallbackReply(npc, playerCharacterName, recalledMemories);
       this.addMemory(npcId, `${playerCharacterName}: "${playerMessage}"`, 2);
       return {
@@ -60,7 +61,7 @@ Goal: ${npc.goal.primary}. Personality: ${npc.personality.join(', ')}.
 Relevant memories: ${recalledMemories.join('; ') || 'none'}.
 Player ${playerCharacterName} says: "${playerMessage}".
 Reply in character and return JSON only: {"reply":"string","trustDelta":0,"favorDelta":0}.`;
-      const parsed = await generateJson(systemPrompt, 'Return only the requested JSON object.', { timeoutMs: 60000 }) as any;
+      const parsed = await aiService.generateJson(aiContext, systemPrompt, 'Return only the requested JSON object.', { timeoutMs: 60000 }) as any;
       const trustDelta = typeof parsed.trustDelta === 'number' ? parsed.trustDelta : 0;
       const favorDelta = typeof parsed.favorDelta === 'number' ? parsed.favorDelta : 0;
       const reply = typeof parsed.reply === 'string' && parsed.reply.trim() ? parsed.reply : `${npc.name} considers your words.`;

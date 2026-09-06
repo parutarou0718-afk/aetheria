@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // [audit #8] Mock the LLM client so these tests NEVER call a real API.
 // This keeps the generator pipeline fully deterministic and offline-safe.
-vi.mock('../llm/llmClient', () => ({
-  generateJson: vi.fn(async (system: string, user: string) => {
+vi.mock('../ai/aiService', () => ({ aiService: {
+  generateJson: vi.fn(async (_context: unknown, system: string, user: string) => {
     if (user.includes('User Vision:')) {
       return mockProfileJson();
     }
@@ -12,8 +12,7 @@ vi.mock('../llm/llmClient', () => ({
     }
     return mockSkeletonJson();
   }),
-  LlmError: class LlmError extends Error {},
-}));
+} }));
 
 import { WorldGenesisService } from './worldGenesisService';
 import { WorldCreationRequest } from './worldCreationRequest';
