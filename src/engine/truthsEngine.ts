@@ -1,7 +1,8 @@
 import { HiddenTruth, Event } from '../types';
 import { globalWorld } from './worldState';
-import { recorder } from './recorder/recorder';
 import { StateChangeProposal } from './recorder/changeSchemas';
+import { createStateChangeProposal } from './proposal/proposalFactory';
+import { proposalPipeline } from './proposal/proposalPipeline';
 
 export class TruthsEngine {
   public static async addEvidenceToTruth(truthId: string, evidenceName: string): Promise<{
@@ -23,7 +24,19 @@ export class TruthsEngine {
       source: { type: 'SYSTEM', id: 'truthsEngine' },
     };
 
-    await recorder.commit('world-snapshot-001', [proposal]);
+    await proposalPipeline.processAndCommit({
+      worldId: globalWorld.snapshot.id,
+      proposals: [createStateChangeProposal({
+        ...proposal,
+        reason: 'Record evidence collected for a hidden truth.',
+        causalBasis: [{
+          type: 'SYSTEM_EVENT',
+          id: truthId,
+          description: 'Evidence collection reached the truth-processing step.',
+        }],
+        authorityLevel: 'SYSTEM',
+      })],
+    });
 
     const updatedTruth = globalWorld.hiddenTruths.get(truthId);
     const isReady = updatedTruth
@@ -109,13 +122,26 @@ export class TruthsEngine {
       chainReactions.push('【宇宙阶层震荡】时空因果树重启机制被侦测，全域魔法与力量爆发！');
     }
 
-    const commitRes = await recorder.commit('world-snapshot-001', proposals);
+    const pipelineResult = await proposalPipeline.processAndCommit({
+      worldId: globalWorld.snapshot.id,
+      proposals: proposals.map((proposal) => createStateChangeProposal({
+        ...proposal,
+        reason: 'Reveal a truth after its evidence requirements were satisfied.',
+        causalBasis: [{
+          type: 'ENTITY_STATE',
+          id: truthId,
+          description: 'The truth reached its reveal condition.',
+        }],
+        authorityLevel: 'SYSTEM',
+      })),
+    });
+    const commitRes = pipelineResult.commitResult;
 
     const updatedTruth = globalWorld.hiddenTruths.get(truthId);
-    const createdEvent = commitRes.eventsGenerated.find((e) => e.type === 'TRUTH_REVEALED');
+    const createdEvent = commitRes?.eventsGenerated.find((e) => e.type === 'TRUTH_REVEALED');
 
     return {
-      success: commitRes.success,
+      success: pipelineResult.success,
       truth: updatedTruth,
       event: createdEvent,
       chainReactions,

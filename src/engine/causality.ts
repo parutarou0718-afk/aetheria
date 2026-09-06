@@ -112,7 +112,7 @@ export class CausalityEngine {
     if (!worldId) {
       throw new Error('Cannot commit causality proposals without an active world id.');
     }
-    const result = await proposalPipeline.commit({
+    const result = await proposalPipeline.processAndCommit({
       worldId,
       proposals: proposals.map((proposal) => createStateChangeProposal({
         ...proposal,

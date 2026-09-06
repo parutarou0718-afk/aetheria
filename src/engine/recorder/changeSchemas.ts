@@ -108,6 +108,27 @@ export const UpdateCharacterMemoryPayloadSchema = z.object({
   }),
 });
 
+export const AuthorityLevelSchema = z.enum([
+  'NARRATIVE',
+  'ACTOR',
+  'SYSTEM',
+  'AUTHOR',
+  'ADMIN',
+]);
+
+export const CausalBasisSchema = z.object({
+  type: z.enum(['FACT', 'EVENT', 'ENTITY_STATE', 'RULE', 'PLAYER_ACTION', 'SYSTEM_EVENT']),
+  id: z.string().optional(),
+  description: z.string().optional(),
+});
+
+export const SemanticEffectSchema = z.object({
+  type: z.string(),
+  magnitude: z.string().optional(),
+  target: z.string().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+
 export const StateChangeProposalSchema = z.object({
   id: z.string(),
   operation: StateChangeOperationEnum,
@@ -120,6 +141,14 @@ export const StateChangeProposalSchema = z.object({
     type: z.enum(['PLAYER_ACTION', 'DM_ACTION', 'LLM', 'SCHEDULER', 'SIMULATION', 'SYSTEM', 'WORLD_BOOTSTRAP', 'TIMELINE']),
     id: z.string().optional(),
   }),
+  // Legacy producers may omit v2 metadata while they are migrated. The
+  // ProposalPipeline applies the strict v2 contract before Recorder receives
+  // ordinary runtime proposals.
+  reason: z.string().min(1).optional(),
+  causalBasis: z.array(CausalBasisSchema).min(1).optional(),
+  authorityLevel: AuthorityLevelSchema.optional(),
+  semanticEffect: SemanticEffectSchema.optional(),
+  confidence: z.number().min(0).max(1).optional(),
 });
 
 export type StateChangeProposal = z.infer<typeof StateChangeProposalSchema>;

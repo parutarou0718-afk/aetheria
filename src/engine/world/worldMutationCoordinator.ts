@@ -29,7 +29,7 @@ export class WorldMutationCoordinator {
     epoch?: number,
     context?: CausalPropagationContext
   ): Promise<CoordinatedCommitResult> {
-    const pipelineResult = await proposalPipeline.commit({
+    const pipelineResult = await proposalPipeline.processAndCommit({
       worldId,
       proposals: proposals.map((proposal) => createStateChangeProposal({
         ...proposal,

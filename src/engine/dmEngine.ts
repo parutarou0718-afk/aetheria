@@ -342,7 +342,7 @@ ${axiomsFormatted}
 
       // Commit all proposals authoritatively via Recorder
       if (proposals.length > 0) {
-        const commitResult = await proposalPipeline.commit({
+        const commitResult = await proposalPipeline.processAndCommit({
           worldId: globalWorld.snapshot.id || 'world-snapshot-001',
           proposals: proposals.map((proposal) => createStateChangeProposal({
             ...proposal,

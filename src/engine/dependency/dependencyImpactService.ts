@@ -5,7 +5,8 @@ import {
   CausalPropagationContext,
   DependencyPropagationResult,
 } from './dependencyTypes';
-import { recorder } from '../recorder/recorder';
+import { createStateChangeProposal } from '../proposal/proposalFactory';
+import { proposalPipeline } from '../proposal/proposalPipeline';
 
 export const MAX_PROPAGATION_DEPTH = 8;
 
@@ -105,13 +106,26 @@ export class DependencyImpactService {
       };
     }
 
-    // Commit proposals via Recorder
-    const commitRes = await recorder.commit(worldId, proposals);
+    // Preserve the dependency batch as one system-authorized pipeline request.
+    const pipelineResult = await proposalPipeline.processAndCommit({
+      worldId,
+      proposals: proposals.map((proposal) => createStateChangeProposal({
+        ...proposal,
+        reason: 'Apply a dependency impact after committed world changes.',
+        causalBasis: [{
+          type: 'SYSTEM_EVENT',
+          id: ctx.propagationId,
+          description: 'Dependency propagation was triggered by committed changes.',
+        }],
+        authorityLevel: 'SYSTEM',
+      })),
+    });
+    const commitRes = pipelineResult.commitResult;
 
-    let nextCommittedCount = commitRes.committedCount;
+    let nextCommittedCount = commitRes?.committedCount ?? 0;
 
     // Recurse for secondary impacts if proposals produced changedTargets
-    if (commitRes.success && commitRes.changedTargets && commitRes.changedTargets.length > 0) {
+    if (commitRes?.success && commitRes.changedTargets && commitRes.changedTargets.length > 0) {
       const nextCtx: CausalPropagationContext = {
         ...ctx,
         depth: ctx.depth + 1,
