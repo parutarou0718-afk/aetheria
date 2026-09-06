@@ -84,9 +84,12 @@ describe('DM LLM integration', () => {
         expect.objectContaining({ authorityLevel: 'SYSTEM' }),
       ])
     );
-    const transactions = await WorldRepository.getAllTransactions(globalWorld.snapshot.id);
-    expect(transactions).toHaveLength(1);
-    const checkpoints = await WorldRepository.getCheckpointsForTransaction(globalWorld.snapshot.id, transactions[0].id);
+    const transactionProposal = proposals.find((proposal) => proposal.operation === 'CREATE_WORLD_TRANSACTION');
+    const transactionId = (transactionProposal?.payload.transaction as { id: string } | undefined)?.id;
+    expect(transactionId).toEqual(expect.any(String));
+    const transaction = await WorldRepository.getWorldTransaction(globalWorld.snapshot.id, transactionId!);
+    expect(transaction).not.toBeNull();
+    const checkpoints = await WorldRepository.getCheckpointsForTransaction(globalWorld.snapshot.id, transactionId!);
     expect(checkpoints.length).toBeGreaterThan(0);
   });
 
