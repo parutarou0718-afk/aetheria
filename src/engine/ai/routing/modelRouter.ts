@@ -1,0 +1,3 @@
+import type { AiPurpose, AiTier } from '../aiTypes';
+export interface ModelRoute { model: string; tier: AiTier; maxOutputTokens?: number; }
+export class ModelRouter { constructor(private readonly models: Partial<Record<AiTier, string>> = { STANDARD: 'standard-model', ADVANCED: 'advanced-model', DEEP: 'deep-model' }) {} route(purpose: AiPurpose, requested?: AiTier): ModelRoute { const tier = requested ?? (purpose === 'WORLD_GENESIS' || purpose === 'WORLD_PROFILE' || purpose === 'WORLD_SKELETON' || purpose === 'WORLD_ENTITY_GENERATION' || purpose === 'CAUSALITY' ? 'ADVANCED' : 'STANDARD'); const model = this.models[tier]; if (!model) throw new Error('No model configured for tier.'); return { tier, model }; } }

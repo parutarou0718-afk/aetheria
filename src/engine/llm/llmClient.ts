@@ -27,6 +27,14 @@ export interface LlmRequestOptions {
   jsonSchemaHint?: string;
 }
 
+export interface LlmClient {
+  generateJson(system: string, user: string, options?: LlmRequestOptions): Promise<unknown>;
+  generateText(system: string, user: string, options?: LlmRequestOptions): Promise<string>;
+  generateTextWithUsage(system: string, user: string, options?: LlmRequestOptions): Promise<LlmCompletion>;
+}
+
+export interface LlmCompletion { content: string; inputTokens?: number; outputTokens?: number; }
+
 export class LlmError extends Error {
   constructor(
     message: string,
@@ -79,20 +87,33 @@ export function activeProviderLabel(): string {
   return resolveLlmConfig().provider;
 }
 
+export function createLlmClient(config: LlmConfig): LlmClient {
+  return {
+    generateJson: (system, user, options = {}) => generateJsonWithConfig(config, system, user, options),
+    generateText: (system, user, options = {}) => generateTextWithConfig(config, system, user, options),
+    generateTextWithUsage: (system, user, options = {}) => requestCompletion([{ role: 'system', content: system }, { role: 'user', content: user }], false, config, options.timeoutMs),
+  };
+}
+
 export async function generateJson(
   system: string,
   user: string,
   options: LlmRequestOptions = {}
 ): Promise<unknown> {
+  return generateJsonWithConfig(resolveLlmConfig(), system, user, options);
+}
+
+async function generateJsonWithConfig(config: LlmConfig, system: string, user: string, options: LlmRequestOptions): Promise<unknown> {
   const content = options.jsonSchemaHint ? `${user}\n\nJSON SCHEMA:\n${options.jsonSchemaHint}` : user;
   const raw = await requestCompletion(
     [{ role: 'system', content: system }, { role: 'user', content }],
     true,
+    config,
     options.timeoutMs
   );
 
   try {
-    return JSON.parse(stripCodeFences(raw));
+    return JSON.parse(stripCodeFences(raw.content));
   } catch (cause) {
     throw new LlmError('LLM returned invalid JSON.', 'LLM_INVALID_JSON', 'openai-compatible', cause);
   }
@@ -103,15 +124,19 @@ export async function generateText(
   user: string,
   options: LlmRequestOptions = {}
 ): Promise<string> {
-  return requestCompletion(
-    [{ role: 'system', content: system }, { role: 'user', content: user }],
-    false,
-    options.timeoutMs
-  );
+  return generateTextWithConfig(resolveLlmConfig(), system, user, options);
 }
 
-async function requestCompletion(messages: ChatMessage[], jsonMode: boolean, timeoutMs = 60000): Promise<string> {
-  const config = resolveLlmConfig();
+async function generateTextWithConfig(config: LlmConfig, system: string, user: string, options: LlmRequestOptions): Promise<string> {
+  return (await requestCompletion(
+    [{ role: 'system', content: system }, { role: 'user', content: user }],
+    false,
+    config,
+    options.timeoutMs
+  )).content;
+}
+
+async function requestCompletion(messages: ChatMessage[], jsonMode: boolean, config: LlmConfig, timeoutMs = 60000): Promise<LlmCompletion> {
   if (!isNonEmptyKey(config.apiKey)) {
     throw new LlmError(`No API key configured. Set ${activeKeyEnvName()}.`, 'LLM_API_KEY_MISSING');
   }
@@ -144,7 +169,12 @@ async function requestCompletion(messages: ChatMessage[], jsonMode: boolean, tim
         if (typeof content !== 'string' || !content.trim()) {
           throw new Error('OpenAI-compatible endpoint returned an empty completion.');
         }
-        return content.trim();
+        const usage = payload?.usage;
+        return {
+          content: content.trim(),
+          inputTokens: typeof usage?.prompt_tokens === 'number' ? usage.prompt_tokens : undefined,
+          outputTokens: typeof usage?.completion_tokens === 'number' ? usage.completion_tokens : undefined,
+        };
       }),
       timeoutMs
     );

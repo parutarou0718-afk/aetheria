@@ -4,6 +4,7 @@ import {
   generateText,
   LlmError,
   resolveLlmConfig,
+  createLlmClient,
 } from '../src/engine/llm/llmClient';
 
 const envKeys = ['LLM_PROVIDER', 'LLM_API_KEY', 'LLM_BASE_URL', 'LLM_MODEL'];
@@ -29,6 +30,19 @@ describe('provider-neutral LLM client', () => {
       baseUrl: 'https://llm.example/v1',
       model: 'test-model',
     });
+  });
+
+  it('keeps concurrent request-scoped credentials isolated', async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string, init: RequestInit) => Promise.resolve(new Response(JSON.stringify({
+      choices: [{ message: { content: url.includes('upstream-a') ? 'A' : 'B' } }],
+    }), { status: 200 })));
+    vi.stubGlobal('fetch', fetchMock);
+    const clientA = createLlmClient({ provider: 'openai-compatible', baseUrl: 'https://upstream-a.test/v1', apiKey: 'key-A', model: 'model-a' });
+    const clientB = createLlmClient({ provider: 'openai-compatible', baseUrl: 'https://upstream-b.test/v1', apiKey: 'key-B', model: 'model-b' });
+
+    await expect(Promise.all([clientA.generateText('system', 'A'), clientB.generateText('system', 'B')])).resolves.toEqual(['A', 'B']);
+    expect(fetchMock).toHaveBeenCalledWith('https://upstream-a.test/v1/chat/completions', expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer key-A' }) }));
+    expect(fetchMock).toHaveBeenCalledWith('https://upstream-b.test/v1/chat/completions', expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer key-B' }) }));
   });
 
   it('sends structured requests to an OpenAI-compatible endpoint', async () => {
