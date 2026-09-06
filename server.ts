@@ -20,9 +20,33 @@ import { TransactionService } from './src/engine/timeline/transactionService';
 import { CheckpointProcessor } from './src/engine/timeline/checkpointProcessor';
 import { GlobalTimeline } from './src/engine/timeline/globalTimeline';
 import { TimelineError } from './src/engine/timeline/timelineErrors';
-import { hasLlmApiKey, resolveLlmConfig } from './src/engine/llm/llmClient';
+import { getPublicLlmConfig } from './src/engine/llm/llmClient';
 
 dotenv.config();
+
+export function registerConfigRoutes(app: express.Express): void {
+  app.get('/api/v1/config', (req, res) => {
+    res.json(getPublicLlmConfig());
+  });
+
+  app.post('/api/v1/config', (req, res) => {
+    const { provider, model, baseUrl, apiKey } = req.body;
+    if (provider && provider !== 'openai-compatible') {
+      res.status(400).json({ error: 'Only the openai-compatible provider is supported.' });
+      return;
+    }
+
+    process.env.LLM_PROVIDER = 'openai-compatible';
+    if (typeof model === 'string') process.env.LLM_MODEL = model;
+    if (typeof baseUrl === 'string') process.env.LLM_BASE_URL = baseUrl;
+    if (typeof apiKey === 'string') process.env.LLM_API_KEY = apiKey;
+
+    res.json({
+      status: 'ok',
+      config: getPublicLlmConfig(),
+    });
+  });
+}
 
 async function startServer() {
   const app = express();
@@ -40,30 +64,7 @@ async function startServer() {
   // === REST API ENDPOINTS ===
 
   // 0. API & LLM Provider Configuration
-  app.get('/api/v1/config', (req, res) => {
-    res.json({
-      ...resolveLlmConfig(),
-      hasApiKey: hasLlmApiKey(),
-    });
-  });
-
-  app.post('/api/v1/config', (req, res) => {
-    const { provider, model, baseUrl, apiKey } = req.body;
-    if (provider && provider !== 'openai-compatible') {
-      res.status(400).json({ error: 'Only the openai-compatible provider is supported.' });
-      return;
-    }
-
-    process.env.LLM_PROVIDER = 'openai-compatible';
-    if (typeof model === 'string') process.env.LLM_MODEL = model;
-    if (typeof baseUrl === 'string') process.env.LLM_BASE_URL = baseUrl;
-    if (typeof apiKey === 'string') process.env.LLM_API_KEY = apiKey;
-
-    res.json({
-      status: 'ok',
-      config: { ...resolveLlmConfig(), hasApiKey: hasLlmApiKey() },
-    });
-  });
+  registerConfigRoutes(app);
 
   // 1. Get World Snapshot & Overview
   app.get('/api/v1/world/snapshot', (req, res) => {
@@ -553,4 +554,6 @@ async function startServer() {
   });
 }
 
-startServer();
+if (process.env.NODE_ENV !== 'test') {
+  void startServer();
+}

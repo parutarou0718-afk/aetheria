@@ -13,6 +13,13 @@ export interface LlmConfig {
   baseUrl: string;
 }
 
+export interface PublicLlmConfig {
+  provider: 'openai-compatible';
+  model: string;
+  baseUrl: string;
+  hasApiKey: boolean;
+}
+
 export interface LlmRequestOptions {
   /** Maximum wait in ms for one completion. Defaults to 60000. */
   timeoutMs?: number;
@@ -52,6 +59,16 @@ function isNonEmptyKey(key: string | undefined): boolean {
 
 export function hasLlmApiKey(): boolean {
   return isNonEmptyKey(resolveLlmConfig().apiKey);
+}
+
+export function getPublicLlmConfig(): PublicLlmConfig {
+  const config = resolveLlmConfig();
+  return {
+    provider: config.provider,
+    model: config.model,
+    baseUrl: config.baseUrl,
+    hasApiKey: hasLlmApiKey(),
+  };
 }
 
 export function activeKeyEnvName(): string {
