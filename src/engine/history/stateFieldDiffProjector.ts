@@ -5,6 +5,17 @@ import type { StateFieldDiff } from './observedHistoryTypes';
 export interface HistoryProjectionResult {
   supported: boolean;
   diffs: StateFieldDiff[];
+  /** Internal execution metadata; StateFieldDiff remains the canonical public projection. */
+  numericMutations?: NumericMutationDescriptor[];
+}
+
+interface NumericMutationDescriptor {
+  entityType: string;
+  entityId: string;
+  fieldPath: string;
+  mode: 'DELTA' | 'SET';
+  numericOperand: number;
+  maximumValue?: number;
 }
 
 /**
@@ -68,16 +79,27 @@ export class StateFieldDiffProjector {
     const payload = proposal.payload;
     const resolve = (field: 'hp' | 'mp', deltaKey: 'hpDelta' | 'mpDelta', setKey: 'setHp' | 'setMp', max: number) => {
       const before = character.attributes[field];
-      if (typeof payload[setKey] === 'number') return Math.max(0, Math.min(max, payload[setKey] as number));
-      if (typeof payload[deltaKey] === 'number') return Math.max(0, Math.min(max, before + (payload[deltaKey] as number)));
-      return undefined;
+      let resolved = before;
+      let changed = false;
+      // This is the Recorder order: apply delta first, then let set win.
+      if (typeof payload[deltaKey] === 'number') { resolved = Math.max(0, Math.min(max, resolved + (payload[deltaKey] as number))); changed = true; }
+      if (typeof payload[setKey] === 'number') { resolved = Math.max(0, Math.min(max, payload[setKey] as number)); changed = true; }
+      return changed ? resolved : undefined;
     };
     const hp = resolve('hp', 'hpDelta', 'setHp', character.attributes.max_hp);
     const mp = resolve('mp', 'mpDelta', 'setMp', character.attributes.max_mp);
     const diffs: Array<{ fieldPath: string; beforeValue: unknown; afterValue: unknown }> = [];
-    if (hp !== undefined) diffs.push({ fieldPath: 'attributes.hp', beforeValue: character.attributes.hp, afterValue: hp, maximumValue: character.attributes.max_hp } as any);
-    if (mp !== undefined) diffs.push({ fieldPath: 'attributes.mp', beforeValue: character.attributes.mp, afterValue: mp, maximumValue: character.attributes.max_mp } as any);
-    return this.result(proposal, 'CHARACTER', characterId, diffs);
+    if (hp !== undefined) diffs.push({ fieldPath: 'attributes.hp', beforeValue: character.attributes.hp, afterValue: hp });
+    if (mp !== undefined) diffs.push({ fieldPath: 'attributes.mp', beforeValue: character.attributes.mp, afterValue: mp });
+    const numericMutations: NumericMutationDescriptor[] = [];
+    for (const [fieldPath, deltaKey, setKey, maximumValue] of [
+      ['attributes.hp', 'hpDelta', 'setHp', character.attributes.max_hp],
+      ['attributes.mp', 'mpDelta', 'setMp', character.attributes.max_mp],
+    ] as const) {
+      if (typeof payload[setKey] === 'number') numericMutations.push({ entityType: 'CHARACTER', entityId: characterId, fieldPath, mode: 'SET', numericOperand: payload[setKey] as number, maximumValue });
+      else if (typeof payload[deltaKey] === 'number') numericMutations.push({ entityType: 'CHARACTER', entityId: characterId, fieldPath, mode: 'DELTA', numericOperand: payload[deltaKey] as number, maximumValue });
+    }
+    return { ...this.result(proposal, 'CHARACTER', characterId, diffs), numericMutations };
   }
 
   private async projectResources(worldId: string, proposal: ProposalV2): Promise<HistoryProjectionResult> {
@@ -86,9 +108,9 @@ export class StateFieldDiffProjector {
     const character = await WorldRepository.getCharacter(worldId, characterId);
     const goldDelta = proposal.payload.goldDelta;
     if (!character || typeof goldDelta !== 'number') return { supported: true, diffs: [] };
-    return this.result(proposal, 'CHARACTER', characterId, [{
+    return { ...this.result(proposal, 'CHARACTER', characterId, [{
       fieldPath: 'resources.gold', beforeValue: character.resources.gold, afterValue: character.resources.gold + goldDelta,
-    }]);
+    }]), numericMutations: [{ entityType: 'CHARACTER', entityId: characterId, fieldPath: 'resources.gold', mode: 'DELTA', numericOperand: goldDelta }] };
   }
 
   private async projectCharacter(worldId: string, proposal: ProposalV2): Promise<HistoryProjectionResult> {
@@ -151,7 +173,7 @@ export class StateFieldDiffProjector {
     proposal: ProposalV2,
     entityType: string,
     entityId: string,
-    fields: Array<{ fieldPath: string; beforeValue: unknown; afterValue: unknown; maximumValue?: number }>,
+    fields: Array<{ fieldPath: string; beforeValue: unknown; afterValue: unknown }>,
   ): HistoryProjectionResult {
     return {
       supported: true,
@@ -169,18 +191,19 @@ export class StateFieldDiffProjector {
 
   private applyShadow(proposal: ProposalV2, projection: HistoryProjectionResult, shadow?: Map<string, unknown>): HistoryProjectionResult {
     if (!shadow || !projection.supported) return projection;
+    const mutations = new Map((projection.numericMutations ?? []).map((mutation) => [
+      `${mutation.entityType}:${mutation.entityId}:${mutation.fieldPath}`, mutation,
+    ]));
     const diffs = projection.diffs.map((diff) => {
       const key = `${diff.entityType}:${diff.entityId}:${diff.fieldPath}`;
       const shadowBefore = shadow.has(key) ? shadow.get(key) : diff.beforeValue;
       let afterValue = diff.afterValue;
-      if (
-        (proposal.operation === 'UPDATE_CHARACTER_ATTRIBUTES' || proposal.operation === 'CHANGE_RESOURCE')
-        && typeof shadowBefore === 'number'
-        && typeof diff.beforeValue === 'number'
-        && typeof diff.afterValue === 'number'
-      ) {
-        const delta = diff.afterValue - diff.beforeValue;
-        afterValue = Math.max(0, Math.min(diff.maximumValue ?? Number.POSITIVE_INFINITY, shadowBefore + delta));
+      const mutation = mutations.get(key);
+      if (mutation) {
+        const resolved = mutation.mode === 'DELTA' && typeof shadowBefore === 'number'
+          ? shadowBefore + mutation.numericOperand
+          : mutation.numericOperand;
+        afterValue = Math.max(0, Math.min(mutation.maximumValue ?? Number.POSITIVE_INFINITY, resolved));
       }
       shadow.set(key, afterValue);
       return { ...diff, beforeValue: shadowBefore, afterValue };

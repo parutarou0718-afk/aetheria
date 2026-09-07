@@ -88,4 +88,66 @@ describe('Observed history pipeline gate', () => {
     expect(result.success).toBe(true);
     expect(commit).toHaveBeenCalledOnce();
   });
+
+  const attributeProposal = (id: string, payload: Record<string, number>) => proposal({
+    id,
+    operation: 'UPDATE_CHARACTER_ATTRIBUTES',
+    entityId: 'pc-player',
+    payload: { characterId: 'pc-player', ...payload },
+    effectiveEpoch: 5,
+  });
+
+  async function observeAttribute(id: string, factPath: 'attributes.hp' | 'attributes.mp', value: number) {
+    await ObservedHistoryRepository.saveObservation(worldId, {
+      id, world_id: worldId, observer_type: 'CHARACTER', observer_id: 'npc-elder',
+      subject_type: 'CHARACTER', subject_id: 'pc-player', observation_type: 'DIRECT_SIGHT',
+      observed_epoch: 10, recorded_epoch: 10, fact_path: factPath, observed_value: value, confidence: 1,
+      visibility: 'PRIVATE', immutable_history: true, metadata: { epistemic_status: 'CONFIRMED_FACT' },
+    });
+  }
+
+  it('rejects cumulative SET HP values when the final set contradicts confirmed history', async () => {
+    await observeAttribute('hp-set-40', 'attributes.hp', 40);
+    const commit = vi.fn();
+    const result = await new ProposalPipeline({ commit } as any, rules, causal, undefined, new ObservedHistoryValidator())
+      .processAndCommit({ worldId, proposals: [attributeProposal('set-80', { setHp: 80 }), attributeProposal('set-60', { setHp: 60 })] });
+    expect(result.rejected).toEqual([expect.objectContaining({ code: 'PROPOSAL_HISTORY_CONFLICT', factPath: 'attributes.hp' })]);
+    expect(commit).not.toHaveBeenCalled();
+  });
+
+  it('accepts cumulative SET HP values when the final set agrees with confirmed history', async () => {
+    await observeAttribute('hp-set-60', 'attributes.hp', 60);
+    const commit = vi.fn().mockResolvedValue({ success: true, errors: [] });
+    const result = await new ProposalPipeline({ commit } as any, rules, causal, undefined, new ObservedHistoryValidator())
+      .processAndCommit({ worldId, proposals: [attributeProposal('set-80', { setHp: 80 }), attributeProposal('set-60', { setHp: 60 })] });
+    expect(result.success).toBe(true);
+    expect(commit).toHaveBeenCalledOnce();
+  });
+
+  it('honors Recorder delta-then-set precedence within an attribute proposal', async () => {
+    await observeAttribute('hp-delta-set-60', 'attributes.hp', 60);
+    const commit = vi.fn().mockResolvedValue({ success: true, errors: [] });
+    const result = await new ProposalPipeline({ commit } as any, rules, causal, undefined, new ObservedHistoryValidator())
+      .processAndCommit({ worldId, proposals: [attributeProposal('delta-then-set', { hpDelta: -20, setHp: 60 })] });
+    expect(result.success).toBe(true);
+    expect(commit).toHaveBeenCalledOnce();
+  });
+
+  it('applies DELTA after an earlier SET in the same batch', async () => {
+    await observeAttribute('hp-set-delta-70', 'attributes.hp', 70);
+    const commit = vi.fn().mockResolvedValue({ success: true, errors: [] });
+    const result = await new ProposalPipeline({ commit } as any, rules, causal, undefined, new ObservedHistoryValidator())
+      .processAndCommit({ worldId, proposals: [attributeProposal('set-60', { setHp: 60 }), attributeProposal('delta-plus-10', { hpDelta: 10 })] });
+    expect(result.success).toBe(true);
+    expect(commit).toHaveBeenCalledOnce();
+  });
+
+  it('preserves MP SET semantics in batch shadow projection', async () => {
+    await observeAttribute('mp-set-30', 'attributes.mp', 30);
+    const commit = vi.fn().mockResolvedValue({ success: true, errors: [] });
+    const result = await new ProposalPipeline({ commit } as any, rules, causal, undefined, new ObservedHistoryValidator())
+      .processAndCommit({ worldId, proposals: [attributeProposal('set-mp-40', { setMp: 40 }), attributeProposal('set-mp-30', { setMp: 30 })] });
+    expect(result.success).toBe(true);
+    expect(commit).toHaveBeenCalledOnce();
+  });
 });

@@ -86,8 +86,6 @@ export interface StateFieldDiff {
 
   beforeValue: unknown;
   afterValue: unknown;
-  /** Optional Recorder-aligned numeric upper bound for batch shadow projection. */
-  maximumValue?: number;
 
   effectiveEpoch: number;
   proposalId: string;
