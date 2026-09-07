@@ -61,4 +61,10 @@ describe('proposal runtime boundary', () => {
     expect(dmSource).not.toMatch(/parsed\.(?:hpDelta|mpDelta|goldDelta)/);
     expect(dmSource).toMatch(/APPLY_SEMANTIC_EFFECT/);
   });
+
+  it('keeps semantic actor identity runtime-owned rather than trusting an LLM effect object', () => {
+    const dmSource = readFileSync(resolve(root, 'src/engine/dmEngine.ts'), 'utf8');
+    expect(dmSource).toMatch(/actorId:\s*context\.actorId/);
+    expect(dmSource).not.toMatch(/semanticEffect:\s*effect/);
+  });
 });

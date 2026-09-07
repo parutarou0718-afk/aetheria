@@ -42,4 +42,22 @@ describe('ParameterResolver', () => {
     const missing = { ...proposal({}) };
     expect(new ParameterResolver().resolve(missing)).toMatchObject({ success: false, rejection: { code: 'PARAMETER_EFFECT_UNSUPPORTED' } });
   });
+
+  it('preserves runtime-owned actor identity while resolving the separate target entity', () => {
+    const input = {
+      ...proposal({ type: 'DAMAGE', magnitude: 'MEDIUM', resource: 'HP', targetEntityId: 'npc-elder' }),
+      actorId: 'pc-player',
+      entityId: 'npc-elder',
+    } as ProposalV2;
+
+    const result = new ParameterResolver().resolve(input);
+
+    expect(result).toMatchObject({
+      success: true,
+      proposal: {
+        actorId: 'pc-player', entityId: 'npc-elder', operation: 'UPDATE_CHARACTER_ATTRIBUTES',
+        payload: { characterId: 'npc-elder', hpDelta: -15 },
+      },
+    });
+  });
 });

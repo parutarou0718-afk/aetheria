@@ -138,6 +138,9 @@ export const StateChangeProposalSchema = z.object({
   operation: StateChangeOperationEnum,
   entityType: z.string(),
   entityId: z.string().optional(),
+  // Provenance only: the actor that initiated an action is distinct from the
+  // entity the proposal mutates. Recorder must never treat this as a target.
+  actorId: z.string().optional(),
   payload: z.record(z.string(), z.any()),
   effectiveEpoch: z.number().int().min(1),
   preconditions: z.array(WorldConditionSchema).optional().default([]),

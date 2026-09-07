@@ -282,11 +282,19 @@ ${axiomsFormatted}
             operation: 'APPLY_SEMANTIC_EFFECT',
             entityType: 'CHARACTER',
             entityId: effect.targetEntityId,
+            // Agency comes from the trusted application request context, not
+            // from untrusted LLM output. The effect target remains separate.
+            actorId: context.actorId,
             payload: {},
             effectiveEpoch: currentEpoch,
             preconditions: [],
             source: { type: 'LLM' },
-            semanticEffect: effect,
+            semanticEffect: {
+              type: effect.type,
+              magnitude: effect.magnitude,
+              resource: effect.resource,
+              targetEntityId: effect.targetEntityId,
+            },
           });
           updatesSummary.push(`Semantic effect proposed: ${effect.type} ${effect.magnitude} ${effect.resource}.`);
         }

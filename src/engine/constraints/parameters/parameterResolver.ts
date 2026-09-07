@@ -25,6 +25,7 @@ export class ParameterResolver {
       success: true,
       proposal: {
         ...proposal,
+        actorId: proposal.actorId,
         operation: effect.resource === 'GOLD' ? 'CHANGE_RESOURCE' : 'UPDATE_CHARACTER_ATTRIBUTES',
         entityType: 'CHARACTER',
         entityId: effect.targetEntityId,

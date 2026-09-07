@@ -49,7 +49,10 @@ export class WorldRuleValidator {
       }
       case 'DEAD_CHARACTER_CANNOT_ACT': {
         if (proposal.authorityLevel !== 'ACTOR' || !DEAD_ACTOR_OPERATIONS.has(proposal.operation)) return null;
-        const characterId = this.entityId(proposal);
+        // New proposals carry the acting character separately from the entity
+        // they affect. Preserve the legacy target-based behavior when older
+        // proposals have no actor identity.
+        const characterId = proposal.actorId ?? this.entityId(proposal);
         if (!characterId) return null;
         const character = await this.state.getCharacter(worldId, characterId);
         return character?.status === 'DEAD' ? this.violation(rule, 'DEAD_CHARACTER_CANNOT_ACT', 'A dead character cannot perform this action.') : null;
