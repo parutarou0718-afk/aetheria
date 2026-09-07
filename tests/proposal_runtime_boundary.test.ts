@@ -44,4 +44,21 @@ describe('proposal runtime boundary', () => {
     expect(validatorSource).not.toMatch(/recorder\s*\.\s*commit\s*\(/);
     expect(validatorSource).not.toMatch(/setRecorderWriteContext\s*\(/);
   });
+
+  it('keeps parameter and causal validators deterministic and read-only', () => {
+    for (const path of [
+      'src/engine/constraints/parameters/parameterResolver.ts',
+      'src/engine/constraints/causality/causalBasisValidator.ts',
+    ]) {
+      const source = readFileSync(resolve(root, path), 'utf8');
+      expect(source, path).not.toMatch(/globalWorld|aiService|llmClient|generateJson|generateText|DMEngine/);
+      expect(source, path).not.toMatch(/recorder\s*\.\s*commit\s*\(|setRecorderWriteContext\s*\(/);
+    }
+  });
+
+  it('does not allow DM to read LLM-authored numeric gameplay deltas', () => {
+    const dmSource = readFileSync(resolve(root, 'src/engine/dmEngine.ts'), 'utf8');
+    expect(dmSource).not.toMatch(/parsed\.(?:hpDelta|mpDelta|goldDelta)/);
+    expect(dmSource).toMatch(/APPLY_SEMANTIC_EFFECT/);
+  });
 });

@@ -123,4 +123,30 @@ describe('default world rules in the proposal pipeline', () => {
     expect(result.rejected).toEqual([expect.objectContaining({ ruleType: 'LOCATION_ACCESS_VALID' })]);
     expect(target.commit).not.toHaveBeenCalled();
   });
+
+  it('rejects a resolved heavy gold cost before Recorder when funds are insufficient', async () => {
+    const target = committer();
+    const result = await new ProposalPipeline(target).processAndCommit({
+      worldId,
+      proposals: [proposal({
+        operation: 'APPLY_SEMANTIC_EFFECT',
+        payload: {},
+        semanticEffect: { type: 'RESOURCE_COST', magnitude: 'HEAVY', resource: 'GOLD', targetEntityId: 'pc-player' },
+      })],
+    });
+    expect(result.rejected).toEqual([expect.objectContaining({ code: 'PROPOSAL_RULE_VIOLATION', ruleType: 'RESOURCE_NON_NEGATIVE' })]);
+    expect(target.commit).not.toHaveBeenCalled();
+  });
+
+  it('validates a repository-backed FACT causal reference before committing', async () => {
+    const fact = { ...globalWorld.facts.get('fact-1')!, id: `${worldId}-causal-fact` };
+    await WorldRepository.saveFact(worldId, fact);
+    const target = committer();
+    const result = await new ProposalPipeline(target).processAndCommit({
+      worldId,
+      proposals: [proposal({ causalBasis: [{ type: 'FACT', id: fact.id, description: 'A persisted world fact supports the action.' }] })],
+    });
+    expect(result.success).toBe(true);
+    expect(target.commit).toHaveBeenCalledOnce();
+  });
 });

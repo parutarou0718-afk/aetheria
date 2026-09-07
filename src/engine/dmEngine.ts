@@ -137,9 +137,7 @@ ${axiomsFormatted}
    - characterUpdate: 包含 name, title, species, skills 等键值的对象 (如果玩家设定/更改了角色属性)
    - newLocation: { id: string, name: string, type: "CITY"|"TOWN"|"FOREST"|"DUNGEON"|"RUINS", description: string, connectedTo: string[] } (如果生成了新地点)
    - targetLocationId: string (如果玩家移动了位置)
-   - hpDelta: 整数
-   - mpDelta: 整数
-   - goldDelta: 整数
+   - effects: [{ type: "DAMAGE"|"RECOVERY"|"RESOURCE_COST"|"RESOURCE_GAIN", magnitude: "LIGHT"|"MEDIUM"|"HEAVY", resource: "HP"|"MP"|"GOLD", targetEntityId: string }]（不得提供数值 delta）
    - npcAffinityDelta: { npcId: string, trustDelta: number, favorDelta: number }
    - collectedEvidence: { truthId: string, evidenceName: string }
    - advanceEpoch: boolean (默认 true)
@@ -152,9 +150,7 @@ ${axiomsFormatted}
   "characterUpdate": null,
   "newLocation": null,
   "targetLocationId": null,
-  "hpDelta": 0,
-  "mpDelta": 0,
-  "goldDelta": 0,
+  "effects": [],
   "npcAffinityDelta": null,
   "collectedEvidence": null,
   "advanceEpoch": true
@@ -277,38 +273,22 @@ ${axiomsFormatted}
         }
       }
 
-      // Apply HP/MP/Gold deltas with profile-driven labels
-      const currencyTerm = globalWorld.profile?.terminology?.currencyTerms?.[0] || '通用币';
-      const energyTerm = globalWorld.profile?.terminology?.energyTerms?.[0] || '能量值 MP';
-
-      if (pc) {
-        if (parsed.hpDelta || parsed.mpDelta) {
+      // LLM may propose semantic effects only; ParameterResolver owns numeric values.
+      if (Array.isArray(parsed.effects)) {
+        for (const effect of parsed.effects) {
+          if (!effect || !effect.type || !effect.magnitude || !effect.resource || !effect.targetEntityId) continue;
           proposals.push({
-            id: `prop-attr-${Date.now()}`,
-            operation: 'UPDATE_CHARACTER_ATTRIBUTES',
+            id: `prop-effect-${Date.now()}-${proposals.length}`,
+            operation: 'APPLY_SEMANTIC_EFFECT',
             entityType: 'CHARACTER',
-            entityId: pc.id,
-            payload: { characterId: pc.id, hpDelta: parsed.hpDelta || 0, mpDelta: parsed.mpDelta || 0 },
+            entityId: effect.targetEntityId,
+            payload: {},
             effectiveEpoch: currentEpoch,
             preconditions: [],
             source: { type: 'LLM' },
+            semanticEffect: effect,
           });
-          if (parsed.hpDelta) updatesSummary.push(`❤️ 生命值 HP ${parsed.hpDelta > 0 ? '+' : ''}${parsed.hpDelta}`);
-          if (parsed.mpDelta) updatesSummary.push(`✨ ${energyTerm} ${parsed.mpDelta > 0 ? '+' : ''}${parsed.mpDelta}`);
-        }
-
-        if (parsed.goldDelta) {
-          proposals.push({
-            id: `prop-gold-${Date.now()}`,
-            operation: 'CHANGE_RESOURCE',
-            entityType: 'CHARACTER',
-            entityId: pc.id,
-            payload: { characterId: pc.id, goldDelta: parsed.goldDelta },
-            effectiveEpoch: currentEpoch,
-            preconditions: [],
-            source: { type: 'LLM' },
-          });
-          updatesSummary.push(`🪙 ${currencyTerm} ${parsed.goldDelta > 0 ? '+' : ''}${parsed.goldDelta}`);
+          updatesSummary.push(`Semantic effect proposed: ${effect.type} ${effect.magnitude} ${effect.resource}.`);
         }
       }
 

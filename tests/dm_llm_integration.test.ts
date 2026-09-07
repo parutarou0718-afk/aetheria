@@ -148,4 +148,35 @@ describe('DM LLM integration', () => {
     expect(response.stateUpdatesSummary).toEqual(['The world rules prevented the proposed state change.']);
     expect(response.epoch).toBe(1);
   });
+
+  it('submits LLM gameplay changes as semantic effects rather than numeric deltas', async () => {
+    ai.isAvailable.mockReturnValue(true);
+    ai.generateJson.mockResolvedValue({
+      dmNarration: 'The blow lands.', effects: [{ type: 'DAMAGE', magnitude: 'MEDIUM', resource: 'HP', targetEntityId: 'pc-player' }],
+      hpDelta: -999, mpDelta: -999, goldDelta: -999, advanceEpoch: false,
+    });
+    const processSpy = vi.spyOn(proposalPipeline, 'processAndCommit').mockResolvedValue({ success: true, accepted: [], rejected: [] });
+
+    await DMEngine.processPlayerAction(requestContext(), 'Strike the target.');
+
+    const [input] = processSpy.mock.calls[0] ?? [];
+    expect(input?.proposals).toEqual(expect.arrayContaining([
+      expect.objectContaining({ operation: 'APPLY_SEMANTIC_EFFECT', semanticEffect: expect.objectContaining({ type: 'DAMAGE', magnitude: 'MEDIUM', resource: 'HP', targetEntityId: 'pc-player' }) }),
+    ]));
+    expect(JSON.stringify(input?.proposals)).not.toContain('-999');
+  });
+
+  it('resolves DM MEDIUM DAMAGE through the real pipeline before Recorder', async () => {
+    ai.isAvailable.mockReturnValue(true);
+    ai.generateJson.mockResolvedValue({
+      dmNarration: 'The blow lands.', effects: [{ type: 'DAMAGE', magnitude: 'MEDIUM', resource: 'HP', targetEntityId: 'pc-player' }], advanceEpoch: false,
+    });
+    const commitSpy = vi.spyOn(recorder, 'commit');
+
+    await DMEngine.processPlayerAction(requestContext(), 'Strike the target.');
+
+    expect(commitSpy).toHaveBeenCalledWith(expect.any(String), expect.arrayContaining([
+      expect.objectContaining({ operation: 'UPDATE_CHARACTER_ATTRIBUTES', payload: expect.objectContaining({ hpDelta: -15 }) }),
+    ]));
+  });
 });
