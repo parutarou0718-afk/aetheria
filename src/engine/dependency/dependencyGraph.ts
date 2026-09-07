@@ -74,13 +74,18 @@ export class DependencyGraph {
       const evalRes = await DependencyEvaluator.evaluate(worldId, edge);
 
       if (!evalRes.valid) {
-        await DependencyRepository.updateDependencyStatus(
-          worldId,
-          edge.id,
-          'INVALIDATED',
-          epoch,
-          evalRes.reason
-        );
+        // QUEST terminal state and dependency invalidation form one Pipeline
+        // batch in DependencyImpactService. Persisting here would make a
+        // rejected terminal transition leave a permanently stale dependency.
+        if (edge.source_type !== 'QUEST') {
+          await DependencyRepository.updateDependencyStatus(
+            worldId,
+            edge.id,
+            'INVALIDATED',
+            epoch,
+            evalRes.reason
+          );
+        }
 
         impacts.push({
           dependencyId: edge.id,

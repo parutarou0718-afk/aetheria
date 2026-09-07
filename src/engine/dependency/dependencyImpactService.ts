@@ -7,6 +7,8 @@ import {
 } from './dependencyTypes';
 import { createStateChangeProposal } from '../proposal/proposalFactory';
 import { proposalPipeline } from '../proposal/proposalPipeline';
+import { QuestRepository } from '../quest/questRepository';
+import { QuestService } from '../quest/questService';
 
 export const MAX_PROPAGATION_DEPTH = 8;
 
@@ -88,18 +90,48 @@ export class DependencyImpactService {
       };
     }
 
-    // Build proposals from impacts
+    const questImpacts = validImpacts.filter((impact) => impact.sourceType === 'QUEST');
+    const nonQuestImpacts = validImpacts.filter((impact) => impact.sourceType !== 'QUEST');
+    // Non-QUEST semantics stay unchanged. QUEST impacts are grouped and made
+    // atomic with their dependency status writes and terminal transition.
     const proposals = await DependencyProposalBuilder.buildImpactProposals(
       worldId,
-      validImpacts,
+      nonQuestImpacts,
       epoch
     );
+    const byQuest = new Map<string, typeof questImpacts>();
+    for (const impact of questImpacts) byQuest.set(impact.sourceId, [...(byQuest.get(impact.sourceId) ?? []), impact]);
+    for (const [questId, impactsForQuest] of byQuest) {
+      const quest = await QuestRepository.getQuest(worldId, questId);
+      if (!quest || ['COMPLETED', 'FAILED', 'INVALIDATED'].includes(quest.status)) continue;
+      const failedIds = new Set(impactsForQuest.map((impact) => impact.dependencyId));
+      for (const impact of impactsForQuest) {
+        proposals.push(createStateChangeProposal({
+          id: `prop-invalidate-quest-dependency-${impact.dependencyId}-${epoch}`,
+          operation: 'UPDATE_DEPENDENCY', entityType: 'DEPENDENCY', entityId: impact.dependencyId,
+          payload: { dependencyId: impact.dependencyId, status: 'INVALIDATED', invalidatedAtEpoch: epoch, invalidationReason: impact.reason },
+          effectiveEpoch: epoch, preconditions: [], source: { type: 'SYSTEM', id: 'DependencyImpactService' },
+          reason: 'Record a failed quest dependency with its terminal transition.',
+          causalBasis: [{ type: 'SYSTEM_EVENT', description: 'A committed world change invalidated this quest dependency.' }], authorityLevel: 'SYSTEM',
+        }));
+      }
+      const operation = quest.status === 'AVAILABLE' || impactsForQuest.some((impact) => impact.failurePolicy === 'INVALIDATE_SOURCE') && !impactsForQuest.some((impact) => impact.failurePolicy === 'FAIL_SOURCE')
+        ? 'INVALIDATE_QUEST' : 'FAIL_QUEST';
+      // ACTIVE quest precedence is deterministic: any FAIL_SOURCE wins;
+      // otherwise INVALIDATE_SOURCE wins. AVAILABLE always invalidates.
+      proposals.push(createStateChangeProposal({
+        id: `prop-${operation.toLowerCase()}-${questId}-${epoch}`, operation, entityType: 'QUEST', entityId: questId,
+        payload: { questId, reason: impactsForQuest.map((impact) => impact.reason).join(' ') }, effectiveEpoch: epoch, preconditions: [],
+        source: { type: 'SYSTEM', id: 'DependencyImpactService' }, reason: 'Transition a quest after an invalid dependency.',
+        causalBasis: [{ type: 'SYSTEM_EVENT', description: 'Quest dependency failure requires a terminal transition.' }], authorityLevel: 'SYSTEM',
+      }), ...(await QuestService.buildDependencyCleanupProposals({ worldId, quest, epoch, excludedDependencyIds: [...failedIds] })));
+    }
 
     if (proposals.length === 0) {
       return {
         propagationId: ctx.propagationId,
         evaluatedDependencies: impacts.length,
-        invalidatedDependencies: validImpacts.length,
+        invalidatedDependencies: 0,
         affectedSources: Array.from(new Set(validImpacts.map((i) => `${i.sourceType}:${i.sourceId}`))),
         committedProposalCount: 0,
         warnings,
@@ -123,6 +155,7 @@ export class DependencyImpactService {
     const commitRes = pipelineResult.commitResult;
 
     let nextCommittedCount = commitRes?.committedCount ?? 0;
+    if (!commitRes?.success) warnings.push(`Dependency impact batch rejected: ${pipelineResult.rejected.map((rejection) => rejection.code).join(', ') || 'unknown rejection'}.`);
 
     // Recurse for secondary impacts if proposals produced changedTargets
     if (commitRes?.success && commitRes.changedTargets && commitRes.changedTargets.length > 0) {
@@ -145,7 +178,7 @@ export class DependencyImpactService {
     return {
       propagationId: ctx.propagationId,
       evaluatedDependencies: impacts.length,
-      invalidatedDependencies: validImpacts.length,
+      invalidatedDependencies: commitRes?.success ? validImpacts.length : 0,
       affectedSources: Array.from(new Set(validImpacts.map((i) => `${i.sourceType}:${i.sourceId}`))),
       committedProposalCount: nextCommittedCount,
       warnings,

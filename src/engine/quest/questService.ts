@@ -4,6 +4,7 @@ import { QuestSchema } from './questSchemas';
 import { QuestRepository } from './questRepository';
 import { toQuestPublicView, type QuestPublicView } from './questPublicView';
 import type { Quest } from './questTypes';
+import { DependencyRepository } from '../dependency/dependencyRepository';
 
 export class QuestService {
   static async getQuest(worldId: string, id: string): Promise<Quest | null> { return QuestRepository.getQuest(worldId, id); }
@@ -17,5 +18,18 @@ export class QuestService {
   }
   static buildAcceptQuestProposal(input: { worldId: string; questId: string; actorId: string; epoch: number }) {
     return createStateChangeProposal({ id: `prop-accept-quest-${input.questId}-${input.epoch}`, operation: 'ACCEPT_QUEST', entityType: 'QUEST', entityId: input.questId, actorId: input.actorId, payload: { assigneeCharacterId: input.actorId }, effectiveEpoch: input.epoch, preconditions: [], source: { type: 'PLAYER_ACTION', id: input.actorId }, reason: 'Player accepted the offered quest.', causalBasis: [{ type: 'PLAYER_ACTION', id: input.actorId, description: 'Player accepted the quest offer.' }], authorityLevel: 'ACTOR' });
+  }
+
+  static async buildDependencyCleanupProposals(input: { worldId: string; quest: Quest; epoch: number; excludedDependencyIds?: string[] }) {
+    const excluded = new Set(input.excludedDependencyIds ?? []);
+    const dependencies = await DependencyRepository.getDependenciesForSource(input.worldId, 'QUEST', input.quest.id);
+    return dependencies.filter((dependency) => dependency.status === 'ACTIVE' && !excluded.has(dependency.id)).map((dependency) => createStateChangeProposal({
+      id: `prop-remove-quest-dependency-${dependency.id}-${input.epoch}`,
+      operation: 'UPDATE_DEPENDENCY', entityType: 'DEPENDENCY', entityId: dependency.id,
+      payload: { dependencyId: dependency.id, status: 'REMOVED', invalidationReason: `Quest ${input.quest.id} reached a terminal state.` },
+      effectiveEpoch: input.epoch, preconditions: [], source: { type: 'SYSTEM', id: 'QuestService' },
+      reason: 'Deactivate a dependency belonging to a terminal quest.',
+      causalBasis: [{ type: 'SYSTEM_EVENT', description: 'Quest terminal transition deactivates remaining dependencies.' }], authorityLevel: 'SYSTEM',
+    }));
   }
 }

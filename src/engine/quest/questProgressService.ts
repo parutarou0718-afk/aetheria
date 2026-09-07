@@ -1,6 +1,7 @@
 import { createStateChangeProposal } from '../proposal/proposalFactory';
 import { proposalPipeline, type ProposalPipelineResult } from '../proposal/proposalPipeline';
 import { QuestRepository } from './questRepository';
+import { QuestService } from './questService';
 import { QuestConditionEvaluator } from './questConditionEvaluator';
 
 /** Post-commit, read-only objective evaluation. Quest state changes still go through the Pipeline. */
@@ -18,7 +19,7 @@ export class QuestProgressService {
           reason: 'The quest objective is satisfied by authoritative world state.',
           causalBasis: [{ type: 'SYSTEM_EVENT', description: 'Committed world changes satisfied the active quest objective.' }],
           authorityLevel: 'SYSTEM',
-        }));
+        }), ...(await QuestService.buildDependencyCleanupProposals({ worldId: input.worldId, quest, epoch: input.epoch })));
       }
     }
     return proposals.length ? proposalPipeline.processAndCommit({ worldId: input.worldId, proposals }) : null;
