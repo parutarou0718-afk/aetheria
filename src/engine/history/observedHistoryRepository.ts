@@ -32,6 +32,12 @@ export class ObservedHistoryRepository {
     worldId: string,
     observation: ObservedHistoryRecord
   ): Promise<void> {
+    const existing = await this.getObservation(worldId, observation.id);
+    if (existing?.immutable_history) {
+      if (this.sameImmutableMaterial(existing, observation, worldId)) return;
+      throw new Error(`Cannot overwrite immutable observation [${observation.id}].`);
+    }
+
     const sql = `
       INSERT INTO observed_history (
         id, world_id, observer_type, observer_id, subject_type, subject_id,
@@ -55,6 +61,7 @@ export class ObservedHistoryRepository {
         source_event_id = excluded.source_event_id,
         source_transaction_id = excluded.source_transaction_id,
         visibility = excluded.visibility,
+        immutable_history = excluded.immutable_history,
         metadata_json = excluded.metadata_json
     `;
 
@@ -77,6 +84,31 @@ export class ObservedHistoryRepository {
       observation.immutable_history ? 1 : 0,
       observation.metadata ? JSON.stringify(observation.metadata) : null,
     ]);
+  }
+
+  private static sameImmutableMaterial(
+    existing: ObservedHistoryRecord,
+    incoming: ObservedHistoryRecord,
+    worldId: string,
+  ): boolean {
+    const material = (record: ObservedHistoryRecord, recordWorldId: string) => ({
+      world_id: recordWorldId,
+      observer_type: record.observer_type,
+      observer_id: record.observer_id,
+      subject_type: record.subject_type,
+      subject_id: record.subject_id,
+      observation_type: record.observation_type,
+      observed_epoch: record.observed_epoch,
+      recorded_epoch: record.recorded_epoch,
+      fact_path: record.fact_path,
+      observed_value: record.observed_value,
+      confidence: record.confidence,
+      visibility: record.visibility,
+      immutable_history: record.immutable_history,
+      epistemic_status: record.metadata?.epistemic_status,
+    });
+    return JSON.stringify(material(existing, existing.world_id))
+      === JSON.stringify(material(incoming, worldId));
   }
 
   static async getObservation(
