@@ -10,6 +10,8 @@ import { CausalBasisValidator } from '../constraints/causality/causalBasisValida
 import { WorldRepositoryCausalBasisStateReader } from '../constraints/causality/causalBasisStateReader';
 import type { CausalBasisViolation } from '../constraints/causality/causalBasisTypes';
 import { ParameterResolver } from '../constraints/parameters/parameterResolver';
+import { ObservedHistoryValidator } from '../history/observedHistoryValidator';
+import type { HistoryConflict } from '../history/observedHistoryTypes';
 import { ProposalSchema, type ProposalV2 } from './proposalSchema';
 
 export interface ProposalPipelineInput {
@@ -25,6 +27,7 @@ export interface ProposalRejection {
     | 'PROPOSAL_CAUSAL_BASIS_INVALID'
     | 'PROPOSAL_PARAMETER_RESOLUTION_FAILED'
     | 'PROPOSAL_RULE_VIOLATION'
+    | 'PROPOSAL_HISTORY_CONFLICT'
     | 'PROPOSAL_PRECONDITION_FAILED'
     | 'PROPOSAL_BATCH_REJECTED';
   message: string;
@@ -34,6 +37,11 @@ export interface ProposalRejection {
   basisType?: string;
   basisId?: string;
   reason?: CausalBasisViolation['reason'];
+  observationId?: string;
+  subjectType?: string;
+  subjectId?: string;
+  factPath?: string;
+  observedEpoch?: number;
 }
 
 export interface ProposalPipelineResult {
@@ -51,6 +59,7 @@ export interface RuleValidator {
   validate(input: { worldId: string; proposal: ProposalV2 }): Promise<{ valid: boolean; violations: WorldRuleViolation[] }>;
 }
 export interface CausalValidator { validate(input: { worldId: string; proposal: ProposalV2 }): Promise<{ valid: boolean; violations: CausalBasisViolation[] }>; }
+export interface HistoryValidator { validate(input: { worldId: string; proposal: ProposalV2 }): Promise<{ valid: boolean; conflicts: HistoryConflict[] }>; }
 
 const defaultRuleValidator = new WorldRuleValidator(
   new DefaultWorldRuleRepository(),
@@ -64,6 +73,7 @@ export class ProposalPipeline {
     private readonly ruleValidator: RuleValidator = defaultRuleValidator,
     private readonly causalValidator: CausalValidator = defaultCausalValidator,
     private readonly parameterResolver = new ParameterResolver(),
+    private readonly historyValidator: HistoryValidator = new ObservedHistoryValidator(),
   ) {}
 
   async processAndCommit(input: ProposalPipelineInput): Promise<ProposalPipelineResult> {
@@ -128,6 +138,23 @@ export class ProposalPipeline {
           });
           continue;
         }
+      }
+
+      const historyResult = await this.historyValidator.validate({ worldId: input.worldId, proposal: resolvedProposal });
+      if (!historyResult.valid) {
+        for (const conflict of historyResult.conflicts) {
+          rejected.push({
+            proposalId: proposal.id,
+            code: 'PROPOSAL_HISTORY_CONFLICT',
+            message: conflict.reason,
+            observationId: conflict.observationId,
+            subjectType: conflict.subjectType,
+            subjectId: conflict.subjectId,
+            factPath: conflict.factPath,
+            observedEpoch: conflict.observedEpoch,
+          });
+        }
+        continue;
       }
 
       accepted.push(resolvedProposal);
