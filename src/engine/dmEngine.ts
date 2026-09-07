@@ -60,6 +60,7 @@ export class DMEngine {
           return await this.applyResolution(context, playerActionText, repairedResolution, narratorRole, true);
         } catch (error) {
           console.error('DM repair error:', error);
+          return this.rejectionResponse(narratorRole, currentLocation?.name || 'Unknown location', result.rejected, true);
         }
       }
       return this.rejectionResponse(narratorRole, currentLocation?.name || 'Unknown location', result.rejected, repaired);

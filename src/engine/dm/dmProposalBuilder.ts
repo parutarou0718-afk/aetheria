@@ -23,6 +23,7 @@ export class DmProposalBuilder {
       effectiveEpoch: currentEpoch, source: { type: 'LLM' as const, id: 'dmEngine' },
       reason: `Resolve player action: ${playerActionText}`,
       causalBasis: [{ type: 'PLAYER_ACTION' as const, description: playerActionText }], authorityLevel: 'ACTOR' as const,
+      actorId: context.actorId,
       confidence: 1,
     };
 

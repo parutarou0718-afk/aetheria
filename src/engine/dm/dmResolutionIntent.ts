@@ -10,7 +10,10 @@ const effectSchema = z.object({
 export const DmResolutionIntentSchema = z.object({
   dmNarration: z.string().default('The action is resolved.'),
   diceRoll: z.object({ skill: z.string(), roll: z.number(), target: z.number(), success: z.boolean() }).nullable().optional(),
-  characterUpdate: z.record(z.string(), z.unknown()).nullable().optional(),
+  characterUpdate: z.object({
+    name: z.string().optional(),
+    title: z.string().optional(),
+  }).strict().nullable().optional(),
   newLocation: z.object({
     id: z.string().optional(), name: z.string().min(1),
     type: z.enum(['CITY', 'TOWN', 'FOREST', 'DUNGEON', 'RUINS']).optional(),

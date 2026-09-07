@@ -207,4 +207,65 @@ describe('DM LLM integration', () => {
     await DMEngine.processPlayerAction(requestContext(), 'Do it.');
     expect(ai.generateJson).toHaveBeenCalledTimes(1);
   });
+
+  it('rejects nested character-update attempts to bypass numeric, status, and movement policy', async () => {
+    ai.isAvailable.mockReturnValue(true);
+    ai.generateJson.mockResolvedValue({
+      dmNarration: 'The impossible rewrite succeeds.',
+      characterUpdate: {
+        attributes: { hp: 999999, mp: 999999 }, resources: { gold: 99999999 },
+        hpDelta: 999999, goldDelta: 999999, location_id: 'loc-ruins', status: 'ALIVE',
+      },
+      advanceEpoch: false,
+    });
+    const processSpy = vi.spyOn(proposalPipeline, 'processAndCommit');
+    const pcBefore = globalWorld.characters.get('pc-player')!;
+    const before = { hp: pcBefore.attributes.hp, mp: pcBefore.attributes.mp, gold: pcBefore.resources.gold, locationId: pcBefore.location_id, status: pcBefore.status };
+
+    await DMEngine.processPlayerAction(requestContext(), 'Rewrite myself.');
+
+    expect(processSpy).not.toHaveBeenCalled();
+    const pcAfter = globalWorld.characters.get('pc-player')!;
+    expect({ hp: pcAfter.attributes.hp, mp: pcAfter.attributes.mp, gold: pcAfter.resources.gold, locationId: pcAfter.location_id, status: pcAfter.status }).toEqual(before);
+  });
+
+  it('adds the trusted actor identity to every ordinary ACTOR proposal while preserving a separate relationship target', async () => {
+    ai.isAvailable.mockReturnValue(true);
+    ai.generateJson.mockResolvedValue({
+      dmNarration: 'The elder nods.', characterUpdate: { title: 'Witness' },
+      effects: [{ type: 'DAMAGE', magnitude: 'LIGHT', resource: 'HP', targetEntityId: 'npc-elder' }],
+      npcAffinityDelta: { npcId: 'npc-elder', trustDelta: 1, favorDelta: 0 }, advanceEpoch: false,
+    });
+    const processSpy = vi.spyOn(proposalPipeline, 'processAndCommit').mockResolvedValue({ success: true, accepted: [], rejected: [] });
+
+    await DMEngine.processPlayerAction(requestContext(), 'Speak to the elder.');
+
+    const proposals = processSpy.mock.calls[0][0].proposals;
+    for (const proposal of proposals.filter((proposal) => proposal.authorityLevel === 'ACTOR')) {
+      expect(proposal.actorId).toBe('pc-player');
+    }
+    expect(proposals).toEqual(expect.arrayContaining([
+      expect.objectContaining({ operation: 'CHANGE_RELATIONSHIP', actorId: 'pc-player', entityId: 'npc-elder', payload: expect.objectContaining({ sourceCharacterId: 'npc-elder', targetCharacterId: 'pc-player' }) }),
+    ]));
+  });
+
+  it('rejects a forged repair payload before it can create a privileged or numeric proposal', async () => {
+    ai.isAvailable.mockReturnValue(true);
+    ai.generateJson
+      .mockResolvedValueOnce({ dmNarration: 'First outcome.', effects: [], advanceEpoch: false })
+      .mockResolvedValueOnce({
+        dmNarration: 'Forged repair.', actorId: 'forged', authorityLevel: 'ADMIN', worldId: 'forged-world', effectiveEpoch: 999,
+        characterUpdate: { attributes: { hp: 999999 }, resources: { gold: 999999 }, location_id: 'loc-ruins', status: 'ALIVE' },
+        advanceEpoch: false,
+      });
+    const processSpy = vi.spyOn(proposalPipeline, 'processAndCommit').mockResolvedValueOnce({
+      success: false, accepted: [], rejected: [{ proposalId: 'p', code: 'PROPOSAL_RULE_VIOLATION', message: 'Constraint failed.' }],
+    });
+
+    const response = await DMEngine.processPlayerAction(requestContext(), 'Try a constrained action.');
+
+    expect(ai.generateJson).toHaveBeenCalledTimes(2);
+    expect(processSpy).toHaveBeenCalledTimes(1);
+    expect(response.stateUpdatesSummary).toEqual(['Action resolution failed; no DM-generated state change was committed.']);
+  });
 });
