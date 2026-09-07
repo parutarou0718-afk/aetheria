@@ -8,13 +8,15 @@ export class InvariantValidator {
     proposal: StateChangeProposal
   ): Promise<{ passed: boolean; error?: string }> {
     const { operation, entityId, payload } = proposal;
+    const allowsDeadCharacterMaintenance = ['SYSTEM', 'AUTHOR', 'ADMIN'].includes(proposal.authorityLevel ?? '');
+    const hasPrivilegedTruthOverride = proposal.authorityLevel === 'AUTHOR' || proposal.authorityLevel === 'ADMIN';
 
     // Rule 1: Dead character cannot act / move
     if (operation === 'UPDATE_CHARACTER' || operation === 'MOVE_CHARACTER' || operation === 'CHANGE_RESOURCE') {
       const charId = (entityId || payload.characterId || payload.id) as string;
       if (charId) {
         const char = globalWorld.characters.get(charId) || (await WorldRepository.getCharacter(worldId, charId));
-        if (char && char.status === 'DEAD') {
+        if (char && char.status === 'DEAD' && !allowsDeadCharacterMaintenance) {
           return {
             passed: false,
             error: `Invariant Violation: Dead character (${char.name} [${char.id}]) cannot act, move, or change status.`,
@@ -73,7 +75,7 @@ export class InvariantValidator {
             (payload.never_changes !== undefined && payload.never_changes !== truth.never_changes) ||
             (payload.exists !== undefined && payload.exists !== truth.exists);
 
-          if (hasImmutablePayload) {
+          if (hasImmutablePayload && !hasPrivilegedTruthOverride) {
             return {
               passed: false,
               error: `Invariant Violation: Hidden Truth ${truthId} is locked and immutable.`,

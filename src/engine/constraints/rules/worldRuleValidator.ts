@@ -87,7 +87,14 @@ export class WorldRuleValidator {
         const truthId = this.entityId(proposal);
         if (!truthId || !this.state.getTruth) return null;
         const truth = await this.state.getTruth(worldId, truthId);
-        const overwritesImmutableValue = truth?.never_changes && ['true_nature', 'true_owner_id', 'true_goal', 'exists'].some((key) => proposal.payload[key] !== undefined);
+        const overwritesImmutableValue = truth?.never_changes && [
+          'true_nature',
+          'true_owner_id',
+          'true_goal',
+          'locked_at_epoch',
+          'never_changes',
+          'exists',
+        ].some((key) => proposal.payload[key] !== undefined);
         return overwritesImmutableValue ? this.violation(rule, 'IMMUTABLE_FACT_PROTECTED', 'An immutable world truth cannot be overwritten.') : null;
       }
       case 'HISTORY_IMMUTABLE':

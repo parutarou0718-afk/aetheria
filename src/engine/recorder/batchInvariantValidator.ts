@@ -10,7 +10,8 @@ export class BatchInvariantValidator {
   public static async validateBatch(
     workingSet: RecorderWorkingSet,
     worldSnapshotAfter: WorldSnapshot,
-    beforeSnapshotEpoch: number
+    beforeSnapshotEpoch: number,
+    privilegedTruthOverrideIds: ReadonlySet<string> = new Set(),
   ): Promise<void> {
     // 10. World Epoch 不倒退
     if (worldSnapshotAfter.epoch < beforeSnapshotEpoch) {
@@ -146,7 +147,7 @@ export class BatchInvariantValidator {
     for (const truth of dirtyTruths) {
       const original = workingSet.getOriginalTruth(truth.id);
       if (original) {
-        if (original.never_changes || truth.never_changes) {
+        if ((original.never_changes || truth.never_changes) && !privilegedTruthOverrideIds.has(truth.id)) {
           const immutableFields = ['exists', 'true_nature', 'true_owner_id', 'true_goal', 'locked_at_epoch', 'never_changes'] as const;
           for (const field of immutableFields) {
             if (!deepEqual(original[field], truth[field])) {

@@ -1031,7 +1031,13 @@ export class Recorder {
 
     // Batch Invariant Check on the final working set
     const finalSnapshot = worldSnapshotAfter || await workingSet.getWorldSnapshot();
-    await BatchInvariantValidator.validateBatch(workingSet, finalSnapshot, beforeEpoch);
+    const privilegedTruthOverrideIds = new Set(
+      proposals
+        .filter((proposal) => proposal.operation === 'REVEAL_TRUTH' && ['AUTHOR', 'ADMIN'].includes(proposal.authorityLevel ?? ''))
+        .map((proposal) => String(proposal.entityId || proposal.payload.truthId || ''))
+        .filter(Boolean),
+    );
+    await BatchInvariantValidator.validateBatch(workingSet, finalSnapshot, beforeEpoch, privilegedTruthOverrideIds);
 
     return {
       worldId,
