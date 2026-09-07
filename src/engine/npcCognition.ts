@@ -13,6 +13,7 @@ import { QuestService } from './quest/questService';
 import { WorldReactionService } from './world/worldReactionService';
 import { ContextAssembler } from './context/contextAssembler';
 import { ContextRenderer } from './context/contextRenderer';
+import { InteractionLogService } from './context/interactionLogService';
 
 export const NpcDialogueIntentSchema = z.object({
   reply: z.string().min(1),
@@ -69,6 +70,7 @@ export class NPCCognitionEngine {
         favorDelta = intent.favorDelta;
         const acceptedQuestId = await this.validQuestAcceptance(context, npc.id, intent.questIntent?.questId);
         const committed = await this.commitDialogueEffects(context, npc, resolvedPlayerName, playerMessage, trustDelta, favorDelta, acceptedQuestId);
+        await InteractionLogService.recordExchange({ worldId: context.worldId, sessionId: context.sessionId, conversationType: 'NPC', conversationId: `NPC:${npc.id}:${context.actorId}`, playerId: context.actorId, counterpartId: npc.id, playerText: playerMessage, responseText: reply, epoch: globalWorld.snapshot.epoch, outcomeStatus: committed ? 'SUCCESS' : 'REJECTED' }).catch(() => undefined);
         return { reply, trustDelta: committed ? trustDelta : 0, favorDelta: committed ? favorDelta : 0, ...(committed && acceptedQuestId ? { actionTriggered: `QUEST_ACCEPTED:${acceptedQuestId}` } : {}) };
       } catch (error) {
         console.error('NPC dialogue generation failed:', error);

@@ -12,6 +12,7 @@ import { DmRepairService } from './dm/dmRepairService';
 import { WorldReactionService } from './world/worldReactionService';
 import { ContextAssembler } from './context/contextAssembler';
 import { ContextRenderer } from './context/contextRenderer';
+import { InteractionLogService } from './context/interactionLogService';
 
 export interface DMResponse {
   dmNarration: string;
@@ -82,7 +83,9 @@ export class DMEngine {
     }
     const updatedPc = globalWorld.characters.get(context.actorId);
     const updatedLocation = updatedPc ? globalWorld.locations.get(updatedPc.location_id) : null;
-    return { dmNarration: resolution.dmNarration, diceRoll: resolution.diceRoll ?? undefined, stateUpdatesSummary: built.updatesSummary, currentLocationName: updatedLocation?.name || 'Unknown location', epoch: globalWorld.snapshot.epoch, resolutionMeta: { repairAttempted: repaired, repairSucceeded: repaired } };
+    const response = { dmNarration: resolution.dmNarration, diceRoll: resolution.diceRoll ?? undefined, stateUpdatesSummary: built.updatesSummary, currentLocationName: updatedLocation?.name || 'Unknown location', epoch: globalWorld.snapshot.epoch, resolutionMeta: { repairAttempted: repaired, repairSucceeded: repaired } };
+    await InteractionLogService.recordExchange({ worldId: context.worldId, sessionId: context.sessionId, conversationType: 'DM', conversationId: `DM:${context.actorId}`, playerId: context.actorId, playerText: playerActionText, responseText: response.dmNarration, epoch: response.epoch, outcomeStatus: 'SUCCESS' }).catch(() => undefined);
+    return response;
   }
 
   private static rejectionResponse(narratorRole: string, location: string, rejected: Array<{ code: string }>, repaired: boolean): DMResponse {
