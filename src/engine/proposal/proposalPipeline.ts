@@ -6,6 +6,10 @@ import { DefaultWorldRuleRepository } from '../constraints/rules/worldRuleReposi
 import { WorldRepositoryRuleStateReader } from '../constraints/rules/worldRepositoryRuleStateReader';
 import { WorldRuleValidator } from '../constraints/rules/worldRuleValidator';
 import type { WorldRuleViolation } from '../constraints/rules/worldRuleTypes';
+import { CausalBasisValidator } from '../constraints/causality/causalBasisValidator';
+import { WorldRepositoryCausalBasisStateReader } from '../constraints/causality/causalBasisStateReader';
+import type { CausalBasisViolation } from '../constraints/causality/causalBasisTypes';
+import { ParameterResolver } from '../constraints/parameters/parameterResolver';
 import { ProposalSchema, type ProposalV2 } from './proposalSchema';
 
 export interface ProposalPipelineInput {
@@ -18,6 +22,8 @@ export interface ProposalRejection {
   code:
     | 'PROPOSAL_SCHEMA_INVALID'
     | 'PROPOSAL_AUTHORITY_INSUFFICIENT'
+    | 'PROPOSAL_CAUSAL_BASIS_INVALID'
+    | 'PROPOSAL_PARAMETER_RESOLUTION_FAILED'
     | 'PROPOSAL_RULE_VIOLATION'
     | 'PROPOSAL_PRECONDITION_FAILED'
     | 'PROPOSAL_BATCH_REJECTED';
@@ -25,6 +31,9 @@ export interface ProposalRejection {
   ruleId?: string;
   ruleType?: WorldRuleViolation['ruleType'];
   hardness?: WorldRuleViolation['hardness'];
+  basisType?: string;
+  basisId?: string;
+  reason?: CausalBasisViolation['reason'];
 }
 
 export interface ProposalPipelineResult {
@@ -41,16 +50,20 @@ interface RecorderCommitter {
 export interface RuleValidator {
   validate(input: { worldId: string; proposal: ProposalV2 }): Promise<{ valid: boolean; violations: WorldRuleViolation[] }>;
 }
+export interface CausalValidator { validate(input: { worldId: string; proposal: ProposalV2 }): Promise<{ valid: boolean; violations: CausalBasisViolation[] }>; }
 
 const defaultRuleValidator = new WorldRuleValidator(
   new DefaultWorldRuleRepository(),
   new WorldRepositoryRuleStateReader(),
 );
+const defaultCausalValidator = new CausalBasisValidator(new WorldRepositoryCausalBasisStateReader());
 
 export class ProposalPipeline {
   constructor(
     private readonly recorderCommitter: RecorderCommitter = recorder,
     private readonly ruleValidator: RuleValidator = defaultRuleValidator,
+    private readonly causalValidator: CausalValidator = defaultCausalValidator,
+    private readonly parameterResolver = new ParameterResolver(),
   ) {}
 
   async processAndCommit(input: ProposalPipelineInput): Promise<ProposalPipelineResult> {
@@ -74,7 +87,20 @@ export class ProposalPipeline {
         continue;
       }
 
-      const ruleResult = await this.ruleValidator.validate({ worldId: input.worldId, proposal: parsed.data });
+      const causalResult = await this.causalValidator.validate({ worldId: input.worldId, proposal: parsed.data });
+      if (!causalResult.valid) {
+        for (const violation of causalResult.violations) rejected.push({ proposalId: proposal.id, code: 'PROPOSAL_CAUSAL_BASIS_INVALID', message: violation.message, basisType: violation.basisType, basisId: violation.basisId, reason: violation.reason });
+        continue;
+      }
+
+      const resolution = this.parameterResolver.resolve(parsed.data);
+      if (resolution.success === false) {
+        rejected.push({ proposalId: proposal.id, code: 'PROPOSAL_PARAMETER_RESOLUTION_FAILED', message: resolution.rejection.message });
+        continue;
+      }
+      const resolvedProposal = resolution.proposal;
+
+      const ruleResult = await this.ruleValidator.validate({ worldId: input.worldId, proposal: resolvedProposal });
       if (!ruleResult.valid) {
         for (const violation of ruleResult.violations) {
           rejected.push({
@@ -89,10 +115,10 @@ export class ProposalPipeline {
         continue;
       }
 
-      if (parsed.data.preconditions.length > 0) {
+      if (resolvedProposal.preconditions.length > 0) {
         const preconditionCheck = await PreconditionEvaluator.evaluatePreconditions(
           input.worldId,
-          parsed.data.preconditions
+          resolvedProposal.preconditions
         );
         if (!preconditionCheck.passed) {
           rejected.push({
@@ -104,7 +130,7 @@ export class ProposalPipeline {
         }
       }
 
-      accepted.push(parsed.data);
+      accepted.push(resolvedProposal);
     }
 
     if (rejected.length > 0) {
