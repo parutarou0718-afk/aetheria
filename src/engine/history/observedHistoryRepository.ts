@@ -168,6 +168,22 @@ export class ObservedHistoryRepository {
     return rows.map(this.mapRowToObservation);
   }
 
+  static async getKnowledgeObservations(
+    worldId: string,
+    observerType: ObserverType,
+    observerId: string,
+    atEpoch: number,
+  ): Promise<ObservedHistoryRecord[]> {
+    const rows = await dbManager.all(
+      `SELECT * FROM observed_history
+       WHERE world_id = ? AND observed_epoch <= ?
+       AND ((observer_type = ? AND observer_id = ?) OR (observer_type = 'PUBLIC' AND visibility = 'PUBLIC'))
+       ORDER BY observed_epoch ASC, recorded_epoch ASC`,
+      [worldId, atEpoch, observerType, observerId],
+    );
+    return rows.map(this.mapRowToObservation);
+  }
+
   static async findConflictingObservations(
     worldId: string,
     subjectType: DependencyTargetType,

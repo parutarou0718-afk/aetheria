@@ -36,6 +36,7 @@ describe('NPC proposal authority', () => {
       proposals: expect.arrayContaining([
         expect.objectContaining({ operation: 'UPDATE_CHARACTER_MEMORY', authorityLevel: 'SYSTEM' }),
         expect.objectContaining({ operation: 'CHANGE_RELATIONSHIP', authorityLevel: 'SYSTEM' }),
+        expect.objectContaining({ operation: 'CREATE_OBSERVED_HISTORY', payload: expect.objectContaining({ factPath: 'dialogue.statement', metadata: expect.objectContaining({ epistemic_status: 'CLAIM' }) }) }),
       ]),
     }));
   });
@@ -87,5 +88,10 @@ describe('NPC proposal authority', () => {
     const reloadedNpc = globalWorld.characters.get('npc-elder')!;
     expect(reloadedNpc.memory.short_term).toContainEqual(expectedMemory);
     expect(reloadedNpc.relationships.find((relationship) => relationship.target_id === 'pc-player')).toEqual(expectedRelationship);
+    const observations = await WorldRepository.getObservedHistoryForObserver(globalWorld.snapshot.id, 'CHARACTER', 'npc-elder');
+    expect(observations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ subject_id: 'pc-player', fact_path: 'name' }),
+      expect.objectContaining({ subject_id: 'pc-player', fact_path: 'dialogue.statement', metadata: expect.objectContaining({ epistemic_status: 'CLAIM' }) }),
+    ]));
   });
 });

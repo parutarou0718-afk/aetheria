@@ -135,6 +135,13 @@ export class StateFieldDiffProjector {
       fieldPath: field, beforeValue: truth[field], afterValue: proposal.payload[field],
     }]);
     if (!truth.revealed) diffs.push({ fieldPath: 'revealed', beforeValue: false, afterValue: true });
+    const revealerId = this.stringPayload(proposal, 'revealerId') ?? 'pc-player';
+    const revealedTo = truth.revealed_to_ids.includes(revealerId)
+      ? truth.revealed_to_ids
+      : [...truth.revealed_to_ids, revealerId];
+    if (JSON.stringify(revealedTo) !== JSON.stringify(truth.revealed_to_ids)) {
+      diffs.push({ fieldPath: 'revealed_to_ids', beforeValue: truth.revealed_to_ids, afterValue: revealedTo });
+    }
     return this.result(proposal, 'HIDDEN_TRUTH', truthId, diffs);
   }
 

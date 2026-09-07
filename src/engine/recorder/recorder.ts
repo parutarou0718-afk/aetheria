@@ -565,7 +565,11 @@ export class Recorder {
           beforeState = deepClone(loc);
 
           if (payload.name) loc.name = String(payload.name);
+          if (payload.type !== undefined) loc.type = payload.type as typeof loc.type;
           if (payload.description) loc.description = String(payload.description);
+          if (payload.status !== undefined) loc.status = payload.status as typeof loc.status;
+          if (payload.owner_id !== undefined) loc.owner_id = String(payload.owner_id);
+          if (payload.owner_type !== undefined) loc.owner_type = String(payload.owner_type);
           if (payload.security && typeof payload.security === 'object') loc.security = { ...loc.security, ...payload.security };
           if (payload.population_trend) loc.population_trend = payload.population_trend;
           loc.updated_at_epoch = effectiveEpoch;
@@ -596,6 +600,8 @@ export class Recorder {
 
           if (payload.name) org.name = String(payload.name);
           if (payload.description) org.description = String(payload.description);
+          if (payload.leader_id !== undefined) org.leader_id = String(payload.leader_id);
+          if (payload.headquarters_id !== undefined) org.headquarters_id = String(payload.headquarters_id);
           workingSet.markOrganizationDirty(org.id);
           afterState = deepClone(org);
           break;
@@ -657,7 +663,7 @@ export class Recorder {
         case 'REVEAL_TRUTH': {
           const truthId = (entityId || payload.truthId) as string;
           const truth = await workingSet.getTruth(truthId);
-          beforeState = { revealed: truth.revealed, revealed_to_ids: [...truth.revealed_to_ids] };
+          beforeState = deepClone(truth);
 
           if (payload.true_nature !== undefined) truth.true_nature = String(payload.true_nature);
           if (payload.true_owner_id !== undefined) truth.true_owner_id = String(payload.true_owner_id);
@@ -672,7 +678,7 @@ export class Recorder {
             truth.revealed_to_ids.push(revealerId);
           }
           workingSet.markTruthDirty(truth.id);
-          afterState = { revealed: truth.revealed, revealed_to_ids: [...truth.revealed_to_ids] };
+          afterState = deepClone(truth);
 
           const evt: Event = {
             id: `evt-truth-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,

@@ -56,6 +56,24 @@ describe('proposal runtime boundary', () => {
     }
   });
 
+  it('keeps history validation and observer knowledge deterministic and read-only', () => {
+    for (const path of [
+      'src/engine/history/observedHistoryValidator.ts',
+      'src/engine/history/historyConflictDetector.ts',
+      'src/engine/history/stateFieldDiffProjector.ts',
+      'src/engine/history/observerKnowledgeService.ts',
+    ]) {
+      const source = readFileSync(resolve(root, path), 'utf8');
+      expect(source, path).not.toMatch(/aiService|llmClient|generateJson|generateText|recorder\s*\.\s*commit\s*\(|setRecorderWriteContext\s*\(/);
+    }
+  });
+
+  it('keeps NPC prompts away from canonical hidden truth fields', () => {
+    const npcSource = readFileSync(resolve(root, 'src/engine/npcCognition.ts'), 'utf8');
+    expect(npcSource).not.toMatch(/globalWorld\.hiddenTruths|\.true_nature|\.true_goal/);
+    expect(npcSource).toMatch(/ObserverKnowledgeService/);
+  });
+
   it('does not allow DM to read LLM-authored numeric gameplay deltas', () => {
     const dmSource = readFileSync(resolve(root, 'src/engine/dmEngine.ts'), 'utf8');
     expect(dmSource).not.toMatch(/parsed\.(?:hpDelta|mpDelta|goldDelta)/);
