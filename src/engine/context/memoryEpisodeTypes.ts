@@ -1,0 +1,2 @@
+export type MemoryEpisodeType = 'DIALOGUE' | 'ACTION' | 'EVENT' | 'QUEST' | 'DISCOVERY' | 'SYSTEM';
+export interface MemoryEpisode { id: string; worldId: string; observerType: 'CHARACTER' | 'PLAYER'; observerId: string; episodeType: MemoryEpisodeType; text: string; importance: number; epoch: number; locationId?: string | null; participantIds: string[]; entityIds: string[]; sourceType: string; sourceId?: string | null; createdAt: string; }

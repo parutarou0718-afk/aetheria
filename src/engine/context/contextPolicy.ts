@@ -1,0 +1,9 @@
+import type { ContextPolicy, ContextPurpose } from './contextTypes';
+const limits = { recentTurns: 12, memories: 12, knowledgePerBucket: 12, quests: 8, events: 12, hiddenTruths: 3 };
+const policies: Record<ContextPurpose, ContextPolicy> = {
+  DM_ACTION: { purpose: 'DM_ACTION', includeWorldProfile: true, includeWorldAxioms: true, includeWorldRules: true, includeActorPrivateState: true, includeScene: true, observerScope: 'PLAYER', includeQuests: true, includeRecentInteractions: true, includeEpisodicMemory: true, includeWorldEvents: true, hiddenTruthAccess: 'RELEVANT_NARRATOR_PRIVATE', maxEstimatedTokens: 7000, limits },
+  NPC_DIALOGUE: { purpose: 'NPC_DIALOGUE', includeWorldProfile: false, includeWorldAxioms: false, includeWorldRules: false, includeActorPrivateState: false, includeScene: true, observerScope: 'NPC', includeQuests: true, includeRecentInteractions: true, includeEpisodicMemory: true, includeWorldEvents: false, hiddenTruthAccess: 'NONE', maxEstimatedTokens: 4500, limits },
+  PROPOSAL_REPAIR: { purpose: 'PROPOSAL_REPAIR', includeWorldProfile: false, includeWorldAxioms: false, includeWorldRules: true, includeActorPrivateState: true, includeScene: true, observerScope: 'NONE', includeQuests: true, includeRecentInteractions: false, includeEpisodicMemory: false, includeWorldEvents: false, hiddenTruthAccess: 'NONE', maxEstimatedTokens: 2200, limits },
+  WORLD_AUTHORING: { purpose: 'WORLD_AUTHORING', includeWorldProfile: true, includeWorldAxioms: true, includeWorldRules: true, includeActorPrivateState: false, includeScene: true, observerScope: 'NONE', includeQuests: true, includeRecentInteractions: false, includeEpisodicMemory: false, includeWorldEvents: true, hiddenTruthAccess: 'RELEVANT_AUTHORING', maxEstimatedTokens: 6000, limits },
+};
+export function getContextPolicy(purpose: ContextPurpose): ContextPolicy { return structuredClone(policies[purpose]); }

@@ -392,4 +392,23 @@ CREATE TABLE IF NOT EXISTS quests (
   failure_reason TEXT,
   FOREIGN KEY(world_id) REFERENCES worlds(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS interaction_turns (
+  id TEXT PRIMARY KEY, world_id TEXT NOT NULL, session_id TEXT NOT NULL,
+  conversation_type TEXT NOT NULL, conversation_id TEXT NOT NULL,
+  speaker_type TEXT NOT NULL, speaker_id TEXT NOT NULL, counterpart_id TEXT,
+  content TEXT NOT NULL, epoch INTEGER NOT NULL, outcome_status TEXT NOT NULL,
+  created_at TEXT NOT NULL, FOREIGN KEY(world_id) REFERENCES worlds(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_interaction_turns_conversation ON interaction_turns(world_id, conversation_id, epoch);
+
+CREATE TABLE IF NOT EXISTS memory_episodes (
+  id TEXT PRIMARY KEY, world_id TEXT NOT NULL, observer_type TEXT NOT NULL, observer_id TEXT NOT NULL,
+  episode_type TEXT NOT NULL, text TEXT NOT NULL, importance INTEGER NOT NULL, epoch INTEGER NOT NULL,
+  location_id TEXT, participant_ids_json TEXT NOT NULL, entity_ids_json TEXT NOT NULL,
+  source_type TEXT NOT NULL, source_id TEXT, created_at TEXT NOT NULL,
+  FOREIGN KEY(world_id) REFERENCES worlds(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_memory_episodes_observer_epoch ON memory_episodes(world_id, observer_type, observer_id, epoch);
+CREATE INDEX IF NOT EXISTS idx_memory_episodes_observer_location ON memory_episodes(world_id, observer_type, observer_id, location_id);
 `;

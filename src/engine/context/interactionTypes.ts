@@ -1,0 +1,1 @@
+export interface InteractionTurn { id: string; worldId: string; sessionId: string; conversationType: 'DM' | 'NPC'; conversationId: string; speakerType: 'PLAYER' | 'DM' | 'NPC'; speakerId: string; counterpartId?: string | null; content: string; epoch: number; outcomeStatus: string; createdAt: string; }

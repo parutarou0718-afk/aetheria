@@ -1,0 +1,6 @@
+import { dbManager } from '../persistence/database';
+import type { InteractionTurn } from './interactionTypes';
+export class InteractionRepository {
+  static async appendTurn(turn: InteractionTurn): Promise<void> { await dbManager.run('INSERT INTO interaction_turns (id, world_id, session_id, conversation_type, conversation_id, speaker_type, speaker_id, counterpart_id, content, epoch, outcome_status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [turn.id, turn.worldId, turn.sessionId, turn.conversationType, turn.conversationId, turn.speakerType, turn.speakerId, turn.counterpartId ?? null, turn.content, turn.epoch, turn.outcomeStatus, turn.createdAt]); }
+  static async listRecentTurns(worldId: string, conversationId: string, limit: number): Promise<InteractionTurn[]> { const rows = await dbManager.all<any>('SELECT * FROM interaction_turns WHERE world_id = ? AND conversation_id = ? ORDER BY epoch DESC, created_at DESC LIMIT ?', [worldId, conversationId, limit]); return rows.reverse().map(row => ({ id: row.id, worldId: row.world_id, sessionId: row.session_id, conversationType: row.conversation_type, conversationId: row.conversation_id, speakerType: row.speaker_type, speakerId: row.speaker_id, counterpartId: row.counterpart_id, content: row.content, epoch: row.epoch, outcomeStatus: row.outcome_status, createdAt: row.created_at })); }
+}
