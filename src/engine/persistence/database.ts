@@ -50,6 +50,7 @@ export class DatabaseManager {
     }
 
     this.db.exec(CREATE_TABLES_SQL);
+    this.migrateObservedHistoryPointUniqueness();
 
     const migrations = [
       "ALTER TABLE characters ADD COLUMN presence_state TEXT NOT NULL DEFAULT 'AT_LOCATION';",
@@ -80,6 +81,43 @@ export class DatabaseManager {
     this.saveToDisk();
     this.initialized = true;
     console.log(`[DatabaseManager] WASM SQLite database initialized at ${DB_PATH}`);
+  }
+
+  /**
+   * Earlier schemas used a natural-point UNIQUE constraint. That prevented two
+   * distinct dialogue claims in the same epoch. Immutable confirmed facts are
+   * now protected by repository policy instead, while claims remain append-only.
+   */
+  private migrateObservedHistoryPointUniqueness(): void {
+    if (!this.db) return;
+    const result = this.db.exec("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'observed_history'");
+    const tableSql = result[0]?.values[0]?.[0];
+    if (typeof tableSql !== 'string' || !/UNIQUE\s*\(\s*world_id\s*,\s*observer_type\s*,\s*observer_id\s*,\s*subject_type\s*,\s*subject_id\s*,\s*observed_epoch\s*,\s*fact_path\s*\)/i.test(tableSql)) return;
+    this.db.exec(`
+      ALTER TABLE observed_history RENAME TO observed_history_legacy;
+      CREATE TABLE observed_history (
+        id TEXT PRIMARY KEY,
+        world_id TEXT NOT NULL,
+        observer_type TEXT NOT NULL,
+        observer_id TEXT NOT NULL,
+        subject_type TEXT NOT NULL,
+        subject_id TEXT NOT NULL,
+        observation_type TEXT NOT NULL,
+        observed_epoch INTEGER NOT NULL,
+        recorded_epoch INTEGER NOT NULL,
+        fact_path TEXT NOT NULL,
+        observed_value_json TEXT,
+        confidence REAL NOT NULL DEFAULT 1.0,
+        source_event_id TEXT,
+        source_transaction_id TEXT,
+        visibility TEXT NOT NULL DEFAULT 'PRIVATE',
+        immutable_history INTEGER NOT NULL DEFAULT 1,
+        metadata_json TEXT,
+        FOREIGN KEY(world_id) REFERENCES worlds(id) ON DELETE CASCADE
+      );
+      INSERT INTO observed_history SELECT * FROM observed_history_legacy;
+      DROP TABLE observed_history_legacy;
+    `);
   }
 
   private saveToDisk(): void {

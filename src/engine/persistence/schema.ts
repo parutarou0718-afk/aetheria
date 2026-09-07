@@ -312,8 +312,7 @@ CREATE TABLE IF NOT EXISTS observed_history (
   visibility TEXT NOT NULL DEFAULT 'PRIVATE',
   immutable_history INTEGER NOT NULL DEFAULT 1,
   metadata_json TEXT,
-  FOREIGN KEY(world_id) REFERENCES worlds(id) ON DELETE CASCADE,
-  UNIQUE(world_id, observer_type, observer_id, subject_type, subject_id, observed_epoch, fact_path)
+  FOREIGN KEY(world_id) REFERENCES worlds(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS causal_impacts (

@@ -12,27 +12,29 @@ export interface HistoryProjectionResult {
  * It is deliberately read-only and mirrors only existing Recorder semantics.
  */
 export class StateFieldDiffProjector {
-  public async project(worldId: string, proposal: ProposalV2): Promise<HistoryProjectionResult> {
+  public async project(worldId: string, proposal: ProposalV2, shadow?: Map<string, unknown>): Promise<HistoryProjectionResult> {
+    let projection: HistoryProjectionResult;
     switch (proposal.operation) {
       case 'MOVE_CHARACTER':
-        return this.projectMove(worldId, proposal);
+        projection = await this.projectMove(worldId, proposal); break;
       case 'SET_CHARACTER_PRESENCE':
-        return this.projectPresence(worldId, proposal);
+        projection = await this.projectPresence(worldId, proposal); break;
       case 'UPDATE_CHARACTER_ATTRIBUTES':
-        return this.projectAttributes(worldId, proposal);
+        projection = await this.projectAttributes(worldId, proposal); break;
       case 'CHANGE_RESOURCE':
-        return this.projectResources(worldId, proposal);
+        projection = await this.projectResources(worldId, proposal); break;
       case 'UPDATE_CHARACTER':
-        return this.projectCharacter(worldId, proposal);
+        projection = await this.projectCharacter(worldId, proposal); break;
       case 'UPDATE_LOCATION':
-        return this.projectLocation(worldId, proposal);
+        projection = await this.projectLocation(worldId, proposal); break;
       case 'UPDATE_ORGANIZATION':
-        return this.projectOrganization(worldId, proposal);
+        projection = await this.projectOrganization(worldId, proposal); break;
       case 'REVEAL_TRUTH':
-        return this.projectTruth(worldId, proposal);
+        projection = await this.projectTruth(worldId, proposal); break;
       default:
         return { supported: false, diffs: [] };
     }
+    return this.applyShadow(proposal, projection, shadow);
   }
 
   private async projectMove(worldId: string, proposal: ProposalV2): Promise<HistoryProjectionResult> {
@@ -73,8 +75,8 @@ export class StateFieldDiffProjector {
     const hp = resolve('hp', 'hpDelta', 'setHp', character.attributes.max_hp);
     const mp = resolve('mp', 'mpDelta', 'setMp', character.attributes.max_mp);
     const diffs: Array<{ fieldPath: string; beforeValue: unknown; afterValue: unknown }> = [];
-    if (hp !== undefined) diffs.push({ fieldPath: 'attributes.hp', beforeValue: character.attributes.hp, afterValue: hp });
-    if (mp !== undefined) diffs.push({ fieldPath: 'attributes.mp', beforeValue: character.attributes.mp, afterValue: mp });
+    if (hp !== undefined) diffs.push({ fieldPath: 'attributes.hp', beforeValue: character.attributes.hp, afterValue: hp, maximumValue: character.attributes.max_hp } as any);
+    if (mp !== undefined) diffs.push({ fieldPath: 'attributes.mp', beforeValue: character.attributes.mp, afterValue: mp, maximumValue: character.attributes.max_mp } as any);
     return this.result(proposal, 'CHARACTER', characterId, diffs);
   }
 
@@ -149,7 +151,7 @@ export class StateFieldDiffProjector {
     proposal: ProposalV2,
     entityType: string,
     entityId: string,
-    fields: Array<{ fieldPath: string; beforeValue: unknown; afterValue: unknown }>,
+    fields: Array<{ fieldPath: string; beforeValue: unknown; afterValue: unknown; maximumValue?: number }>,
   ): HistoryProjectionResult {
     return {
       supported: true,
@@ -163,5 +165,26 @@ export class StateFieldDiffProjector {
 
   private stringPayload(proposal: ProposalV2, key: string): string | undefined {
     return typeof proposal.payload[key] === 'string' ? proposal.payload[key] as string : undefined;
+  }
+
+  private applyShadow(proposal: ProposalV2, projection: HistoryProjectionResult, shadow?: Map<string, unknown>): HistoryProjectionResult {
+    if (!shadow || !projection.supported) return projection;
+    const diffs = projection.diffs.map((diff) => {
+      const key = `${diff.entityType}:${diff.entityId}:${diff.fieldPath}`;
+      const shadowBefore = shadow.has(key) ? shadow.get(key) : diff.beforeValue;
+      let afterValue = diff.afterValue;
+      if (
+        (proposal.operation === 'UPDATE_CHARACTER_ATTRIBUTES' || proposal.operation === 'CHANGE_RESOURCE')
+        && typeof shadowBefore === 'number'
+        && typeof diff.beforeValue === 'number'
+        && typeof diff.afterValue === 'number'
+      ) {
+        const delta = diff.afterValue - diff.beforeValue;
+        afterValue = Math.max(0, Math.min(diff.maximumValue ?? Number.POSITIVE_INFINITY, shadowBefore + delta));
+      }
+      shadow.set(key, afterValue);
+      return { ...diff, beforeValue: shadowBefore, afterValue };
+    });
+    return { ...projection, diffs };
   }
 }

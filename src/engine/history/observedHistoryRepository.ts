@@ -38,7 +38,7 @@ export class ObservedHistoryRepository {
       throw new Error(`Cannot overwrite immutable observation [${observation.id}].`);
     }
     const existingAtObservationPoint = await this.getObservationAtPoint(worldId, observation);
-    if (existingAtObservationPoint?.immutable_history) {
+    if (existingAtObservationPoint && this.isLockingConfirmed(existingAtObservationPoint)) {
       if (this.sameImmutableMaterial(existingAtObservationPoint, observation, worldId)) return;
       throw new Error(`Cannot overwrite immutable observation at ${observation.subject_id}.${observation.fact_path}.`);
     }
@@ -114,6 +114,10 @@ export class ObservedHistoryRepository {
     });
     return JSON.stringify(material(existing, existing.world_id))
       === JSON.stringify(material(incoming, worldId));
+  }
+
+  private static isLockingConfirmed(observation: ObservedHistoryRecord): boolean {
+    return observation.immutable_history && observation.metadata?.epistemic_status === 'CONFIRMED_FACT';
   }
 
   static async getObservation(

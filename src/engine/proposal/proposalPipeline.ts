@@ -59,7 +59,10 @@ export interface RuleValidator {
   validate(input: { worldId: string; proposal: ProposalV2 }): Promise<{ valid: boolean; violations: WorldRuleViolation[] }>;
 }
 export interface CausalValidator { validate(input: { worldId: string; proposal: ProposalV2 }): Promise<{ valid: boolean; violations: CausalBasisViolation[] }>; }
-export interface HistoryValidator { validate(input: { worldId: string; proposal: ProposalV2 }): Promise<{ valid: boolean; conflicts: HistoryConflict[] }>; }
+export interface HistoryValidator {
+  validate(input: { worldId: string; proposal: ProposalV2 }): Promise<{ valid: boolean; conflicts: HistoryConflict[] }>;
+  validateBatch?(input: { worldId: string; proposals: ProposalV2[] }): Promise<{ valid: boolean; conflicts: HistoryConflict[] }>;
+}
 
 const defaultRuleValidator = new WorldRuleValidator(
   new DefaultWorldRuleRepository(),
@@ -140,28 +143,31 @@ export class ProposalPipeline {
         }
       }
 
-      const historyResult = await this.historyValidator.validate({ worldId: input.worldId, proposal: resolvedProposal });
-      if (!historyResult.valid) {
-        for (const conflict of historyResult.conflicts) {
-          rejected.push({
-            proposalId: proposal.id,
-            code: 'PROPOSAL_HISTORY_CONFLICT',
-            message: conflict.reason,
-            observationId: conflict.observationId,
-            subjectType: conflict.subjectType,
-            subjectId: conflict.subjectId,
-            factPath: conflict.factPath,
-            observedEpoch: conflict.observedEpoch,
-          });
-        }
-        continue;
-      }
-
       accepted.push(resolvedProposal);
     }
 
     if (rejected.length > 0) {
       return { success: false, accepted: [], rejected };
+    }
+
+    const historyResult = this.historyValidator.validateBatch
+      ? await this.historyValidator.validateBatch({ worldId: input.worldId, proposals: accepted })
+      : await this.validateHistoryIndividually(input.worldId, accepted);
+    if (!historyResult.valid) {
+      return {
+        success: false,
+        accepted: [],
+        rejected: historyResult.conflicts.map((conflict) => ({
+          proposalId: this.proposalIdForConflict(accepted, conflict),
+          code: 'PROPOSAL_HISTORY_CONFLICT' as const,
+          message: conflict.reason,
+          observationId: conflict.observationId,
+          subjectType: conflict.subjectType,
+          subjectId: conflict.subjectId,
+          factPath: conflict.factPath,
+          observedEpoch: conflict.observedEpoch,
+        })),
+      };
     }
 
     // Recorder remains the single owner of world-state precondition and invariant validation.
@@ -183,6 +189,21 @@ export class ProposalPipeline {
 
   async commit(input: ProposalPipelineInput): Promise<ProposalPipelineResult> {
     return this.processAndCommit(input);
+  }
+
+  private async validateHistoryIndividually(worldId: string, proposals: ProposalV2[]): Promise<{ valid: boolean; conflicts: HistoryConflict[] }> {
+    const conflicts: HistoryConflict[] = [];
+    for (const proposal of proposals) {
+      const result = await this.historyValidator.validate({ worldId, proposal });
+      conflicts.push(...result.conflicts);
+    }
+    return { valid: conflicts.length === 0, conflicts };
+  }
+
+  private proposalIdForConflict(proposals: ProposalV2[], conflict: HistoryConflict): string {
+    return proposals.find((proposal) => proposal.id === conflict.proposalId)?.id
+      ?? proposals[proposals.length - 1]?.id
+      ?? 'unknown';
   }
 }
 

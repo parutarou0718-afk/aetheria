@@ -60,6 +60,7 @@ export interface ObservedHistoryRecord {
 }
 
 export interface HistoryConflict {
+  proposalId?: string;
   observationId: string;
 
   subjectType: DependencyTargetType;
@@ -85,6 +86,8 @@ export interface StateFieldDiff {
 
   beforeValue: unknown;
   afterValue: unknown;
+  /** Optional Recorder-aligned numeric upper bound for batch shadow projection. */
+  maximumValue?: number;
 
   effectiveEpoch: number;
   proposalId: string;

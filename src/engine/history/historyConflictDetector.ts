@@ -15,6 +15,7 @@ export class HistoryConflictDetector {
           || obs.fact_path !== diff.fieldPath || diff.effectiveEpoch >= obs.observed_epoch
           || JSON.stringify(diff.afterValue) === JSON.stringify(obs.observed_value)) continue;
         conflicts.push({
+          proposalId: diff.proposalId,
           observationId: obs.id, subjectType: obs.subject_type, subjectId: obs.subject_id,
           factPath: obs.fact_path, observedEpoch: obs.observed_epoch, observedValue: obs.observed_value,
           proposedEffectiveEpoch: diff.effectiveEpoch, proposedBeforeValue: diff.beforeValue,

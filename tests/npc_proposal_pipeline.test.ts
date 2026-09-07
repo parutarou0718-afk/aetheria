@@ -94,4 +94,17 @@ describe('NPC proposal authority', () => {
       expect.objectContaining({ subject_id: 'pc-player', fact_path: 'dialogue.statement', metadata: expect.objectContaining({ epistemic_status: 'CLAIM' }) }),
     ]));
   });
+
+  it('persists distinct dialogue claims made in the same epoch without rolling either dialogue back', async () => {
+    await NPCCognitionEngine.generateNPCDialogue(requestContext(), 'npc-elder', 'Statement A.', 'Player');
+    await NPCCognitionEngine.generateNPCDialogue(requestContext(), 'npc-elder', 'Statement B.', 'Player');
+
+    const npc = globalWorld.characters.get('npc-elder')!;
+    expect(npc.memory.short_term.map((memory) => memory.text)).toEqual(expect.arrayContaining([
+      expect.stringContaining('Statement A.'), expect.stringContaining('Statement B.'),
+    ]));
+    const observations = await WorldRepository.getObservedHistoryForObserver(globalWorld.snapshot.id, 'CHARACTER', 'npc-elder');
+    expect(observations.filter((observation) => observation.fact_path === 'dialogue.statement').map((observation) => observation.observed_value))
+      .toEqual(expect.arrayContaining(['Statement A.', 'Statement B.']));
+  });
 });
