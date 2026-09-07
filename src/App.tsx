@@ -9,8 +9,6 @@ import {
   HiddenTruth,
   SimulationStats,
   CausalityPressure,
-  UserCommercialState,
-  AdventureArtCard,
 } from './types';
 import { Navbar } from './components/Navbar';
 import { WorldMap } from './components/WorldMap';
@@ -20,9 +18,6 @@ import { HiddenTruthsBoard } from './components/HiddenTruthsBoard';
 import { EventsTimeline } from './components/EventsTimeline';
 import { SchedulerMonitor } from './components/SchedulerMonitor';
 import { DMConsole, DMConsoleMessage } from './components/DMConsole';
-import { AdModal } from './components/AdModal';
-import { VIPModal } from './components/VIPModal';
-import { AdventureGalleryModal } from './components/AdventureGalleryModal';
 import { WorldGenesisModal } from './components/WorldGenesisModal';
 import { Sparkles, RefreshCw, Compass, Bell } from 'lucide-react';
 
@@ -51,19 +46,6 @@ export default function App() {
   const [events, setEvents] = useState<Event[]>([]);
   const [truths, setTruths] = useState<HiddenTruth[]>([]);
 
-  // Commercial & VIP & Art Generation State
-  const [commercialState, setCommercialState] = useState<UserCommercialState>({
-    isVIP: false,
-    artQuotas: 0,
-    turnsSinceLastAd: 0,
-    lastAdEpoch: 1,
-    totalAdsWatched: 0,
-  });
-  const [adventureGallery, setAdventureGallery] = useState<AdventureArtCard[]>([]);
-  const [isAdModalOpen, setIsAdModalOpen] = useState<boolean>(false);
-  const [adRewardType, setAdRewardType] = useState<'AD_TRIGGER' | 'ART_QUOTA'>('AD_TRIGGER');
-  const [isVIPModalOpen, setIsVIPModalOpen] = useState<boolean>(false);
-  const [isGalleryModalOpen, setIsGalleryModalOpen] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
@@ -232,7 +214,6 @@ export default function App() {
   const handlePlayerDMAction = async (actionText: string) => {
     setIsDMProcessing(true);
     try {
-      const prevLocName = currentLocation?.name;
       const res = await fetch('/api/v1/dm/action', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -240,105 +221,10 @@ export default function App() {
       });
       const data = await res.json();
       await fetchWorldData();
-
-      const newTurns = commercialState.turnsSinceLastAd + 1;
-      const currentEpoch = data.epoch || snapshot?.epoch || 1;
-      const daysPassed = Math.max(0, currentEpoch - commercialState.lastAdEpoch);
-      const locChanged = data.currentLocationName && data.currentLocationName !== prevLocName;
-      const isCheckpoint = locChanged || daysPassed >= 1;
-
-      if (newTurns >= 20 && daysPassed >= 1 && isCheckpoint) {
-        if (commercialState.isVIP) {
-          showToast('👑 VIP 尊享免打扰特权为您自动跳过插屏广告！');
-          setCommercialState((prev) => ({
-            ...prev,
-            turnsSinceLastAd: 0,
-            lastAdEpoch: currentEpoch,
-          }));
-        } else {
-          setAdRewardType('AD_TRIGGER');
-          setIsAdModalOpen(true);
-          setCommercialState((prev) => ({
-            ...prev,
-            turnsSinceLastAd: 0,
-            lastAdEpoch: currentEpoch,
-          }));
-        }
-      } else {
-        setCommercialState((prev) => ({
-          ...prev,
-          turnsSinceLastAd: newTurns,
-        }));
-      }
-
       return data;
     } finally {
       setIsDMProcessing(false);
     }
-  };
-
-  const handleActivateVIP = () => {
-    setCommercialState((prev) => ({
-      ...prev,
-      isVIP: true,
-      artQuotas: prev.artQuotas + 3,
-    }));
-    showToast('👑 成功开通 VIP 尊享月卡！广告已全面免除，并获赠 3 次 AI 画卷生成额度！');
-    setIsVIPModalOpen(false);
-  };
-
-  const handleGenerateArtForNarration = async (locationName: string, narrationSummary: string) => {
-    if (commercialState.artQuotas <= 0) {
-      setIsVIPModalOpen(true);
-      showToast('AI 画卷生成额度用尽，开通VIP(获3次)、看广告(+1次)或充值包(+2次)');
-      return;
-    }
-
-    showToast('🎨 AI 正在结合当前地点与剧情为您生成高精场景画卷...');
-    try {
-      const res = await fetch('/api/v1/art/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ locationName, narrationSummary }),
-      });
-      const data = await res.json();
-      if (data.artCard) {
-        setAdventureGallery((prev) => [data.artCard, ...prev]);
-        setCommercialState((prev) => ({
-          ...prev,
-          artQuotas: Math.max(0, prev.artQuotas - 1),
-        }));
-        setIsGalleryModalOpen(true);
-        showToast('✨ 画卷生成成功，已保存至【AI 冒险画卷册】！');
-      }
-    } catch (err) {
-      console.error('Art generation error:', err);
-    }
-  };
-
-  const handleWatchAdForArtQuota = () => {
-    setAdRewardType('ART_QUOTA');
-    setIsAdModalOpen(true);
-  };
-
-  const handleRewardGrantedFromAd = () => {
-    if (adRewardType === 'ART_QUOTA') {
-      setCommercialState((prev) => ({
-        ...prev,
-        artQuotas: prev.artQuotas + 1,
-        totalAdsWatched: prev.totalAdsWatched + 1,
-      }));
-      showToast('📺 完成广告观看！获得 +1 次 AI 场景画卷生图额度！');
-    }
-  };
-
-  const handleRechargeArtQuota = (count: number) => {
-    setCommercialState((prev) => ({
-      ...prev,
-      artQuotas: prev.artQuotas + count,
-    }));
-    showToast(`🪙 充值成功！获得 +${count} 次 AI 场景画卷额度！`);
-    setIsVIPModalOpen(false);
   };
 
   const handleResetWorld = async () => {
@@ -421,9 +307,6 @@ export default function App() {
         isDeducing={isDeducing}
         showInspector={showInspector}
         setShowInspector={setShowInspector}
-        commercialState={commercialState}
-        onOpenVIPModal={() => setIsVIPModalOpen(true)}
-        onOpenGalleryModal={() => setIsGalleryModalOpen(true)}
       />
 
       {/* Main Container */}
@@ -459,8 +342,6 @@ export default function App() {
           isDMProcessing={isDMProcessing}
           messages={dmMessages}
           setMessages={setDmMessages}
-          onGenerateArtForNarration={handleGenerateArtForNarration}
-          artQuotas={commercialState.artQuotas}
           onOpenGenesisModal={() => setIsGenesisModalOpen(true)}
         />
 
@@ -559,43 +440,6 @@ export default function App() {
         />
       )}
 
-      {/* Ad Trigger Modal */}
-      <AdModal
-        isOpen={isAdModalOpen}
-        onClose={() => setIsAdModalOpen(false)}
-        onUpgradeVIP={() => setIsVIPModalOpen(true)}
-        isVIP={commercialState.isVIP}
-        rewardType={adRewardType}
-        onRewardGranted={handleRewardGrantedFromAd}
-      />
-
-      {/* VIP & Commercial Center Modal */}
-      <VIPModal
-        isOpen={isVIPModalOpen}
-        onClose={() => setIsVIPModalOpen(false)}
-        commercialState={commercialState}
-        onActivateVIP={handleActivateVIP}
-        onWatchAdForArtQuota={handleWatchAdForArtQuota}
-        onRechargeArtQuota={handleRechargeArtQuota}
-      />
-
-      {/* Adventure Gallery Modal */}
-      <AdventureGalleryModal
-        isOpen={isGalleryModalOpen}
-        onClose={() => setIsGalleryModalOpen(false)}
-        artCards={adventureGallery}
-        artQuotas={commercialState.artQuotas}
-        onGenerateNewArt={() => {
-          if (dmMessages.length > 0) {
-            const lastDM = dmMessages.filter((m) => m.sender === 'DM').pop();
-            handleGenerateArtForNarration(
-              currentLocation?.name || '新世界',
-              lastDM?.text || '冒险的故事在继续'
-            );
-          }
-        }}
-        onOpenVIPModal={() => setIsVIPModalOpen(true)}
-      />
     </div>
   );
 }

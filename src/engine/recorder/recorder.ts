@@ -510,6 +510,14 @@ export class Recorder {
             importance: Number(payload.memoryItem.importance || 1),
             epoch: Number(payload.memoryItem.epoch || effectiveEpoch),
           });
+          if (char.memory.short_term.length > 15) {
+            const itemsText = char.memory.short_term.map((memory) => memory.text).join(' | ');
+            char.memory.compressed = char.memory.compressed
+              ? `${char.memory.compressed} [Epoch ${effectiveEpoch}: ${itemsText}]`
+              : itemsText;
+            char.memory.short_term.sort((left, right) => right.importance - left.importance);
+            char.memory.short_term = char.memory.short_term.slice(0, 5);
+          }
           workingSet.markCharacterDirty(char.id);
           afterState = { memoryCount: char.memory.short_term.length };
           break;

@@ -11,10 +11,7 @@ import {
   Zap,
   RotateCcw,
   ShieldAlert,
-  Crown,
-  Image as ImageIcon,
 } from 'lucide-react';
-import { UserCommercialState } from '../types';
 
 interface NavbarProps {
   epoch: number;
@@ -27,9 +24,6 @@ interface NavbarProps {
   isDeducing: boolean;
   showInspector: boolean;
   setShowInspector: (val: boolean) => void;
-  commercialState: UserCommercialState;
-  onOpenVIPModal: () => void;
-  onOpenGalleryModal: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -43,9 +37,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   isDeducing,
   showInspector,
   setShowInspector,
-  commercialState,
-  onOpenVIPModal,
-  onOpenGalleryModal,
 }) => {
   return (
     <header className="bg-slate-900 border-b border-slate-800 text-slate-100 sticky top-0 z-40 shadow-xl">
@@ -71,27 +62,6 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
 
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-            <button
-              onClick={onOpenVIPModal}
-              className={`flex items-center gap-1 px-2 py-1 sm:px-2.5 sm:py-1 rounded-lg text-[10px] sm:text-[11px] font-bold border transition cursor-pointer shrink-0 whitespace-nowrap ${
-                commercialState.isVIP
-                  ? 'bg-gradient-to-r from-amber-500/20 to-amber-600/30 text-amber-300 border-amber-500/40'
-                  : 'bg-amber-500 hover:bg-amber-400 text-slate-950 border-amber-500 shadow-md shadow-amber-500/20'
-              }`}
-            >
-              <Crown className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
-              <span>{commercialState.isVIP ? 'VIP' : '👑VIP'}</span>
-            </button>
-
-            <button
-              onClick={onOpenGalleryModal}
-              className="flex items-center gap-1 px-2 py-1 sm:px-2.5 sm:py-1 rounded-lg bg-indigo-950/80 hover:bg-indigo-900/80 text-indigo-200 border border-indigo-500/40 text-[10px] sm:text-[11px] font-mono shrink-0 cursor-pointer whitespace-nowrap"
-            >
-              <ImageIcon className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-indigo-400 shrink-0" />
-              <span className="hidden xs:inline">画卷:</span>
-              <span className="font-bold text-indigo-300">{commercialState.artQuotas}次</span>
-            </button>
-
             <div className="flex items-center gap-1 bg-slate-950/80 px-2 py-1 sm:px-2.5 sm:py-1 rounded-lg border border-slate-800 text-[10px] sm:text-xs shrink-0 whitespace-nowrap">
               <Clock className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-400 shrink-0" />
               <span className="text-slate-400 hidden sm:inline">纪元:</span>

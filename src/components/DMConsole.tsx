@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Sparkles, Send, Dices, Image as ImageIcon, Wand2, Compass } from 'lucide-react';
+import { Sparkles, Send, Dices, Wand2, Compass } from 'lucide-react';
 import { Character, Location } from '../types';
 
 export interface DMConsoleMessage {
@@ -27,8 +27,6 @@ interface DMConsoleProps {
   isDMProcessing: boolean;
   messages: DMConsoleMessage[];
   setMessages: React.Dispatch<React.SetStateAction<DMConsoleMessage[]>>;
-  onGenerateArtForNarration?: (locationName: string, narrationSummary: string) => void;
-  artQuotas?: number;
   onOpenGenesisModal: () => void;
 }
 
@@ -41,8 +39,6 @@ export const DMConsole: React.FC<DMConsoleProps> = ({
   isDMProcessing,
   messages,
   setMessages,
-  onGenerateArtForNarration,
-  artQuotas,
   onOpenGenesisModal,
 }) => {
   const [inputAction, setInputAction] = useState('');
@@ -243,19 +239,6 @@ export const DMConsole: React.FC<DMConsoleProps> = ({
                 </div>
               )}
 
-              {/* Generate AI Art Card for DM narration */}
-              {msg.sender === 'DM' && onGenerateArtForNarration && (
-                <div className="mt-3 pt-2 border-t border-slate-800/60 flex items-center justify-between text-[11px]">
-                  <span className="text-slate-500 font-mono">🎨 AI 场景画卷</span>
-                  <button
-                    onClick={() => onGenerateArtForNarration(currentLocation?.name || '未知区域', msg.text)}
-                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-950 hover:bg-indigo-900 text-indigo-300 border border-indigo-500/30 font-bold transition cursor-pointer hover:border-indigo-400"
-                  >
-                    <ImageIcon className="w-3.5 h-3.5 text-indigo-400" />
-                    <span>生成当前场景画卷</span>
-                  </button>
-                </div>
-              )}
             </div>
           </div>
         ))}

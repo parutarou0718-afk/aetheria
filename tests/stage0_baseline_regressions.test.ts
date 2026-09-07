@@ -43,7 +43,10 @@ describe('Stage 0 baseline regressions', () => {
     setRecorderWriteContext(true);
     let result;
     try {
-      result = await NPCCognitionEngine.generateNPCDialogue('npc-custom', 'What do you remember?', 'Ari');
+      result = await NPCCognitionEngine.generateNPCDialogue({
+        userId: 'SYSTEM_USER', sessionId: 'test-session', worldId: globalWorld.snapshot.id,
+        actorId: 'pc-player', channel: 'WEB', mode: 'IN_WORLD_ACTION',
+      }, 'npc-custom', 'What do you remember?', 'Ari');
     } finally {
       setRecorderWriteContext(false);
     }

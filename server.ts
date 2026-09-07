@@ -4,10 +4,8 @@ import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
 import { globalWorld } from './src/engine/worldState';
 import { SchedulerEngine, WAKE_WEIGHTS } from './src/engine/scheduler';
-import { NPCCognitionEngine } from './src/engine/npcCognition';
 import { CausalityEngine } from './src/engine/causality';
 import { TruthsEngine } from './src/engine/truthsEngine';
-import { DMEngine } from './src/engine/dmEngine';
 import { check7Invariants } from './src/engine/invariants';
 import { WorldBootstrap } from './src/engine/world/worldBootstrap';
 import { WorldRepository } from './src/engine/world/worldRepository';
@@ -22,8 +20,24 @@ import { TimelineError } from './src/engine/timeline/timelineErrors';
 import { aiService } from './src/engine/ai/aiService';
 import { createStateChangeProposal } from './src/engine/proposal/proposalFactory';
 import { proposalPipeline } from './src/engine/proposal/proposalPipeline';
+import { gameApplicationService } from './src/application/gameApplicationService';
+import type { GameRequestContext } from './src/application/gameRequestContext';
 
 dotenv.config();
+
+export function createDevelopmentGameRequestContext(actorId?: string): GameRequestContext {
+  const currentPc = actorId
+    ? globalWorld.characters.get(actorId)
+    : globalWorld.characters.get('pc-player') || Array.from(globalWorld.characters.values()).find((character) => character.type === 'PC');
+  return {
+    userId: 'SYSTEM_USER',
+    sessionId: 'dev-session',
+    worldId: globalWorld.snapshot.id,
+    actorId: currentPc?.id || actorId || 'pc-player',
+    channel: 'WEB',
+    mode: 'IN_WORLD_ACTION',
+  };
+}
 
 export function registerConfigRoutes(app: express.Express): void {
   app.get('/api/v1/config', (req, res) => {
@@ -262,8 +276,15 @@ async function startServer() {
       res.status(400).json({ error: 'action_text is required' });
       return;
     }
-    const dmResult = await DMEngine.processPlayerAction(action_text);
-    res.json(dmResult);
+    const result = await gameApplicationService.handleInput({
+      context: createDevelopmentGameRequestContext(),
+      text: action_text,
+    });
+    if (result.status !== 'OK') {
+      res.status(501).json(result);
+      return;
+    }
+    res.json(result.response);
   });
 
   registerCharacterActionRoutes(app);
@@ -276,12 +297,11 @@ async function startServer() {
       return;
     }
 
-    const pc = globalWorld.characters.get('pc-player');
-    const result = await NPCCognitionEngine.generateNPCDialogue(
-      req.params.id,
-      message,
-      pc ? pc.name : '卡尔'
-    );
+    const result = await gameApplicationService.handleNpcDialogue({
+      context: createDevelopmentGameRequestContext(),
+      npcId: req.params.id,
+      text: message,
+    });
 
     res.json(result);
   });
@@ -324,30 +344,6 @@ async function startServer() {
     }
     const result = await TruthsEngine.revealTruth(truth_id, revealer_id || 'pc-player');
     res.json(result);
-  });
-
-  // 13.5. AI Adventure Illustration Generation
-  app.post('/api/v1/art/generate', (req, res) => {
-    const { locationName, narrationSummary } = req.body;
-    const loc = locationName || '原初荒野';
-    const summary = narrationSummary || '黑夜中的冒险故事在流转';
-
-    const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const seed = encodeURIComponent(`${loc}-${Date.now()}`);
-    const prompt = `Dark fantasy RPG epic digital painting, ${loc}, ${summary.slice(0, 40)}, intricate detail, cinematic lighting, masterpiece`;
-
-    const artCard = {
-      id: `art-${Date.now()}`,
-      title: `${loc} • 冒险现场画卷`,
-      locationName: loc,
-      narrationSummary: summary,
-      imageUrl: `https://picsum.photos/seed/${seed}/800/600`,
-      prompt,
-      epoch: globalWorld.snapshot.epoch,
-      timestamp,
-    };
-
-    res.json({ status: 'ok', artCard });
   });
 
   // === PHASE 3 TIMELINE API ENDPOINTS ===

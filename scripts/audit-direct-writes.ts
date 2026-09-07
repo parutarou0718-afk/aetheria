@@ -27,6 +27,7 @@ const FORBIDDEN_PATTERNS = [
   /\b(char|character|loc|location|org|organization|seed|truth)\.resources\.gold\s*(\+|\-|\*|\/)?=/,
   /\b(char|character|loc|location|org|organization|seed|truth)\.attributes\.(hp|mp|sanity)\s*(\+|\-|\*|\/)?=/,
   /\b(char|character|loc|location|org|organization|seed|truth)\.relationships\.(push|unshift|splice)/,
+  /\b(char|character|npc|loc|location|org|organization|seed|truth)\.memory\.(short_term|important_events)\.(push|unshift|splice)/,
   /\b(char|character|loc|location|org|organization|seed|truth)\.connected_to\.(push|unshift|splice)/,
   /\b(char|character|loc|location|org|organization|seed|truth)\.evidence_collected\.(push|unshift|splice)/,
   /WorldRepository\.saveCharacter/,

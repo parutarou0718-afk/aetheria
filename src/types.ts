@@ -353,26 +353,6 @@ export interface SimulationStats {
   invariant_warnings: string[];
 }
 
-export interface AdventureArtCard {
-  id: string;
-  title: string;
-  locationName: string;
-  narrationSummary: string;
-  imageUrl: string;
-  prompt: string;
-  epoch: number;
-  timestamp: string;
-}
-
-export interface UserCommercialState {
-  isVIP: boolean;
-  vipExpiresAt?: string;
-  artQuotas: number;
-  turnsSinceLastAd: number;
-  lastAdEpoch: number;
-  totalAdsWatched: number;
-}
-
 export interface LocationEdge {
   id: string;
   world_id: string;

@@ -14,11 +14,21 @@ import { proposalPipeline } from '../src/engine/proposal/proposalPipeline';
 import { WorldRepository } from '../src/engine/world/worldRepository';
 import { bootstrapWithDefaultWorld } from './helpers/worldFixture';
 
+function requestContext() {
+  return {
+    userId: 'SYSTEM_USER', sessionId: 'test-session', worldId: globalWorld.snapshot.id,
+    actorId: 'pc-player', channel: 'WEB' as const, mode: 'IN_WORLD_ACTION' as const,
+  };
+}
+
 describe('DM LLM integration', () => {
+  let worldSequence = 0;
+
   beforeEach(async () => {
     ai.isAvailable.mockReset();
     ai.generateJson.mockReset();
-    await bootstrapWithDefaultWorld();
+    worldSequence += 1;
+    await bootstrapWithDefaultWorld(`world-dm-llm-${Date.now()}-${worldSequence}`);
   });
 
   afterEach(() => {
@@ -41,7 +51,7 @@ describe('DM LLM integration', () => {
       advanceEpoch: false,
     });
 
-    const response = await DMEngine.processPlayerAction('Look upward.');
+    const response = await DMEngine.processPlayerAction(requestContext(), 'Look upward.');
 
     expect(ai.generateJson).toHaveBeenCalledWith(expect.objectContaining({ userId: 'SYSTEM_USER', worldId: expect.any(String), purpose: 'DM_ACTION' }), expect.any(String), expect.any(String), expect.any(Object));
     expect(response.dmNarration).toBe('The stars answer.');
@@ -51,7 +61,7 @@ describe('DM LLM integration', () => {
     ai.isAvailable.mockReturnValue(true);
     ai.generateJson.mockRejectedValue(new Error('upstream unavailable'));
 
-    const response = await DMEngine.processPlayerAction('Look upward.');
+    const response = await DMEngine.processPlayerAction(requestContext(), 'Look upward.');
 
     expect(response.stateUpdatesSummary).toEqual([
       'Action resolution failed; no DM-generated state change was committed.',
@@ -74,7 +84,7 @@ describe('DM LLM integration', () => {
     });
     const commitSpy = vi.spyOn(recorder, 'commit');
 
-    await DMEngine.processPlayerAction('Travel to the ruins.');
+    await DMEngine.processPlayerAction(requestContext(), 'Travel to the ruins.');
 
     expect(commitSpy).toHaveBeenCalledOnce();
     const [, proposals] = commitSpy.mock.calls[0];
@@ -114,7 +124,7 @@ describe('DM LLM integration', () => {
     });
     const epochBefore = globalWorld.snapshot.epoch;
 
-    const response = await DMEngine.processPlayerAction('Try an action.');
+    const response = await DMEngine.processPlayerAction(requestContext(), 'Try an action.');
 
     expect(response.stateUpdatesSummary).toEqual([
       'Action resolution failed; no DM-generated state change was committed.',

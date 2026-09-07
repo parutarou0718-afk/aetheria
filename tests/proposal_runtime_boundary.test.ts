@@ -30,4 +30,11 @@ describe('proposal runtime boundary', () => {
       expect(source, workspacePath).not.toMatch(/recorder\s*\.\s*commit\s*\(/);
     }
   });
+
+  it('does not allow NPC cognition to mutate nested memory or relationship state directly', () => {
+    const npcSource = readFileSync(resolve(root, 'src/engine/npcCognition.ts'), 'utf8');
+    expect(npcSource).not.toMatch(/\.memory\.(?:short_term|important_events)\.(?:push|unshift|splice)\s*\(/);
+    expect(npcSource).not.toMatch(/\.relationships\.(?:push|unshift|splice)\s*\(/);
+    expect(npcSource).not.toMatch(/setRecorderWriteContext\s*\(/);
+  });
 });

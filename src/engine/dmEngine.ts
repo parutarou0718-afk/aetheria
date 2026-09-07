@@ -14,6 +14,7 @@ import {
   resolveNarratorRole,
 } from './dmNarrator';
 import { aiService } from './ai/aiService';
+import type { GameRequestContext } from '../application/gameRequestContext';
 
 export interface DMResponse {
   dmNarration: string;
@@ -24,8 +25,15 @@ export interface DMResponse {
 }
 
 export class DMEngine {
-  public static async processPlayerAction(playerActionText: string): Promise<DMResponse> {
-    const pc = globalWorld.characters.get('pc-player') || Array.from(globalWorld.characters.values()).find((c) => c.type === 'PC');
+  public static async processPlayerAction(context: GameRequestContext, playerActionText: string): Promise<DMResponse> {
+    if (context.worldId !== globalWorld.snapshot.id) {
+      return this.buildContextErrorResponse();
+    }
+
+    const pc = globalWorld.characters.get(context.actorId);
+    if (!pc) {
+      return this.buildContextErrorResponse();
+    }
     const currentLocation = pc ? globalWorld.locations.get(pc.location_id) : null;
     const npcsHere = Array.from(globalWorld.characters.values()).filter(
       (c) => c.type === 'NPC' && c.location_id === pc?.location_id
@@ -40,7 +48,7 @@ export class DMEngine {
     // Falls back to the neutral "世界演算者" when no profile is present.
     const narratorRole = resolveNarratorRole(profile);
 
-    const aiContext = { userId: 'SYSTEM_USER', worldId: globalWorld.snapshot.id, purpose: 'DM_ACTION' as const };
+    const aiContext = { userId: context.userId, worldId: context.worldId, purpose: 'DM_ACTION' as const };
     if (!aiService.isAvailable(aiContext)) {
       const fallbackNarration = buildDmFallbackNarration(
         narratorRole,
@@ -253,7 +261,7 @@ ${axiomsFormatted}
       if (parsed.targetLocationId && pc) {
         try {
           const travelPlan = await TransactionService.buildTravelPlanProposals({
-            worldId: globalWorld.snapshot.id || 'world-snapshot-001',
+            worldId: context.worldId,
             actorId: pc.id,
             destinationLocationId: parsed.targetLocationId,
             startEpoch: currentEpoch,
@@ -345,7 +353,7 @@ ${axiomsFormatted}
       // while preserving their distinct authorities.
       if (proposals.length > 0 || timelineExecutionProposals.length > 0) {
         const pipelineResult = await proposalPipeline.processAndCommit({
-          worldId: globalWorld.snapshot.id || 'world-snapshot-001',
+          worldId: context.worldId,
           proposals: [
             ...proposals.map((proposal) => createStateChangeProposal({
               ...proposal,
@@ -416,5 +424,14 @@ ${axiomsFormatted}
         epoch: globalWorld.snapshot.epoch,
       };
     }
+  }
+
+  private static buildContextErrorResponse(): DMResponse {
+    return {
+      dmNarration: 'This action cannot be resolved in the current world context.',
+      stateUpdatesSummary: ['Action resolution failed; no DM-generated state change was committed.'],
+      currentLocationName: 'Unknown',
+      epoch: globalWorld.snapshot.epoch,
+    };
   }
 }
