@@ -35,4 +35,19 @@ describe('ProposalPipeline parameter and causal order', () => {
     expect(ruleValidator.validate).not.toHaveBeenCalled();
     expect(committer.commit).not.toHaveBeenCalled();
   });
+
+  it('rejects an entire batch when a later proposal has an invalid causal reference', async () => {
+    const committer = target();
+    const selectiveCausal = {
+      validate: vi.fn(async ({ proposal }: { proposal: ProposalV2 }) => proposal.id === 'bad-causal'
+        ? { valid: false, violations: [{ basisType: 'FACT', basisId: 'missing', reason: 'NOT_FOUND' as const, message: 'Missing.' }] }
+        : { valid: true, violations: [] }),
+    };
+    const result = await new ProposalPipeline(committer, rules, selectiveCausal).processAndCommit({
+      worldId: 'world-1',
+      proposals: [semantic({ id: 'valid-semantic' }), semantic({ id: 'bad-causal' })],
+    });
+    expect(result).toMatchObject({ success: false, accepted: [], rejected: [expect.objectContaining({ code: 'PROPOSAL_CAUSAL_BASIS_INVALID' })] });
+    expect(committer.commit).not.toHaveBeenCalled();
+  });
 });
