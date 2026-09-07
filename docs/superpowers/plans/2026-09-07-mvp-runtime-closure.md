@@ -46,4 +46,4 @@
 
 - [x] Expand static coverage for nested NPC mutations.
 - [x] Remove legacy UI commercial mocks (VIP, advertisements, recharge, and art quotas).
-- [ ] Run full verification and GitHub Actions.
+- [x] Run full verification and GitHub Actions.
