@@ -17,7 +17,11 @@ export class CausalBasisValidator {
         if (!basis.id && !basis.description) violations.push(this.violation(basis.type, undefined, 'MALFORMED', 'A descriptive causal basis requires a description.'));
         continue;
       }
-      if (!basis.id) { violations.push(this.violation(basis.type, undefined, 'MALFORMED', 'This causal basis requires an id.')); continue; }
+      if (!basis.id) {
+        if (basis.type === 'RULE' && basis.description) continue;
+        violations.push(this.violation(basis.type, undefined, 'MALFORMED', 'This causal basis requires an id.'));
+        continue;
+      }
       if (basis.type === 'FACT' && !(await this.state.factExists(input.worldId, basis.id))) violations.push(this.violation(basis.type, basis.id, 'NOT_FOUND', 'Referenced fact does not exist in this world.'));
       if (basis.type === 'EVENT') {
         const epoch = await this.state.eventEpoch(input.worldId, basis.id);

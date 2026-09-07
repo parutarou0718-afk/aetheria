@@ -8,7 +8,7 @@ import { globalWorld, setRecorderWriteContext } from '../src/engine/worldState';
 import { bootstrapWithDefaultWorld } from './helpers/worldFixture';
 
 const worldId = 'world-rule-closure';
-const immutableTruthId = 'truth-old-lo';
+const immutableTruthId = `${worldId}-immutable-truth`;
 
 function proposal(overrides: Partial<ProposalV2> = {}): ProposalV2 {
   return {
@@ -41,6 +41,7 @@ async function markPlayerDead(): Promise<void> {
 describe('world rule closure authority alignment', () => {
   beforeEach(async () => {
     await bootstrapWithDefaultWorld(worldId);
+    await WorldRepository.saveHiddenTruth(worldId, { ...globalWorld.hiddenTruths.get('truth-old-lo')!, id: immutableTruthId });
   });
 
   it('rejects a dead ACTOR action through the real pipeline without moving the character', async () => {

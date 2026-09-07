@@ -1,12 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ProposalPipeline } from '../src/engine/proposal/proposalPipeline';
+import { ProposalPipeline, type CausalValidator, type RuleValidator } from '../src/engine/proposal/proposalPipeline';
 import { PreconditionEvaluator } from '../src/engine/recorder/validators';
 
 const proposal: any = { id: 'p1', operation: 'UPDATE_CHARACTER', entityType: 'CHARACTER', payload: {}, effectiveEpoch: 1, preconditions: [], source: { type: 'LLM' }, reason: 'r', causalBasis: [{ type: 'PLAYER_ACTION' }], authorityLevel: 'ACTOR' };
+const rules: RuleValidator = { validate: vi.fn().mockResolvedValue({ valid: true, violations: [] }) };
+const causal: CausalValidator = { validate: vi.fn().mockResolvedValue({ valid: true, violations: [] }) };
 describe('ProposalPipeline', () => {
   it('exposes processAndCommit as the runtime pipeline entry point', async () => {
     const commit = vi.fn().mockResolvedValue({ success: true });
-    const pipeline = new ProposalPipeline({ commit } as any);
+    const pipeline = new ProposalPipeline({ commit } as any, rules, causal);
 
     await expect(pipeline.processAndCommit({ worldId: 'world', proposals: [proposal] })).resolves.toMatchObject({ success: true });
     expect(commit).toHaveBeenCalledOnce();
@@ -14,7 +16,7 @@ describe('ProposalPipeline', () => {
 
   it('commits a valid batch once and rejects an invalid batch without calling Recorder', async () => {
     const commit = vi.fn().mockResolvedValue({ success: true });
-    const pipeline = new ProposalPipeline({ commit } as any);
+    const pipeline = new ProposalPipeline({ commit } as any, rules, causal);
     await expect(pipeline.commit({ worldId: 'world', proposals: [proposal] })).resolves.toMatchObject({ success: true });
     expect(commit).toHaveBeenCalledOnce();
     commit.mockClear();
@@ -25,7 +27,7 @@ describe('ProposalPipeline', () => {
 
   it('rejects a failed precondition before calling Recorder', async () => {
     const commit = vi.fn();
-    const pipeline = new ProposalPipeline({ commit } as any);
+    const pipeline = new ProposalPipeline({ commit } as any, rules, causal);
     const evaluate = vi.spyOn(PreconditionEvaluator, 'evaluatePreconditions').mockResolvedValue({
       passed: false,
       failedConditions: ['CHARACTER:pc.status expected ALIVE'],
