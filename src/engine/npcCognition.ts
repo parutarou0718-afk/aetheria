@@ -103,6 +103,7 @@ export class NPCCognitionEngine {
     })] : [];
     const proposals = [
       createStateChangeProposal({ ...base, id: `prop-npc-memory-${npc.id}-${Date.now()}`, operation: 'UPDATE_CHARACTER_MEMORY', entityType: 'CHARACTER', entityId: npc.id, payload: { characterId: npc.id, memoryItem: { text: `${playerName}: "${message}"`, importance: 3, epoch: globalWorld.snapshot.epoch } }, reason: 'Record an NPC dialogue memory.' }),
+      ...(player ? [createStateChangeProposal({ ...base, id: `prop-npc-episode-${npc.id}-${Date.now()}`, operation: 'APPEND_MEMORY_EPISODE', entityType: 'MEMORY_EPISODE', entityId: `episode-npc-${npc.id}-${Date.now()}`, payload: { episode: { id: `episode-npc-${npc.id}-${Date.now()}`, observerType: 'CHARACTER', observerId: npc.id, episodeType: 'DIALOGUE', text: message, importance: 3, epoch: globalWorld.snapshot.epoch, locationId: npc.location_id, participantIds: [npc.id, player.id], entityIds: [npc.id, player.id], sourceType: 'NPC_DIALOGUE', sourceId: null } }, reason: 'Record an NPC episodic dialogue memory.' })] : []),
       ...(player ? [createStateChangeProposal({ ...base, id: `prop-npc-relationship-${npc.id}-${player.id}-${Date.now()}`, operation: 'CHANGE_RELATIONSHIP', entityType: 'CHARACTER', entityId: npc.id, payload: { sourceCharacterId: npc.id, targetCharacterId: player.id, trustDelta, favorDelta }, reason: 'Apply the NPC relationship outcome of a dialogue.' })] : []),
       ...directObservations,
       ...playerObservations,

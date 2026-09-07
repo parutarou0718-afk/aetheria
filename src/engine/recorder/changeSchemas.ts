@@ -49,6 +49,7 @@ export const StateChangeOperationEnum = z.enum([
   'COMPLETE_QUEST',
   'FAIL_QUEST',
   'INVALIDATE_QUEST',
+  'APPEND_MEMORY_EPISODE',
 ]);
 
 export type StateChangeOperation = z.infer<typeof StateChangeOperationEnum>;

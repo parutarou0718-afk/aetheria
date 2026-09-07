@@ -8,6 +8,7 @@ import { ObservedHistoryRecord } from '../history/observedHistoryTypes';
 import { ObservedHistoryRepository } from '../history/observedHistoryRepository';
 import { QuestRepository } from '../quest/questRepository';
 import type { Quest } from '../quest/questTypes';
+import type { MemoryEpisode } from '../context/memoryEpisodeTypes';
 
 function deepClone<T>(obj: T): T {
   if (obj === undefined || obj === null) return obj;
@@ -25,6 +26,7 @@ export class RecorderWorkingSet {
   private dependencies = new Map<string, DependencyEdge>();
   private observations = new Map<string, ObservedHistoryRecord>();
   private quests = new Map<string, Quest>();
+  private memoryEpisodes = new Map<string, MemoryEpisode>();
 
   private originalCharacters = new Map<string, Character>();
   private originalLocations = new Map<string, Location>();
@@ -50,6 +52,7 @@ export class RecorderWorkingSet {
   private dirtyDependencyIds = new Set<string>();
   private dirtyObservationIds = new Set<string>();
   private dirtyQuestIds = new Set<string>();
+  private dirtyMemoryEpisodeIds = new Set<string>();
 
   constructor(public readonly worldId: string) {}
 
@@ -451,6 +454,15 @@ export class RecorderWorkingSet {
   public getDirtyQuests(): Quest[] {
     return Array.from(this.dirtyQuestIds).map((id) => this.quests.get(id)!);
   }
+
+  public addMemoryEpisode(episode: MemoryEpisode): MemoryEpisode {
+    if (this.memoryEpisodes.has(episode.id)) throw new RecorderError('DUPLICATE_ENTITY_ID', `Memory episode [${episode.id}] already exists`);
+    const copy = deepClone(episode);
+    this.memoryEpisodes.set(copy.id, copy);
+    this.dirtyMemoryEpisodeIds.add(copy.id);
+    return copy;
+  }
+  public getDirtyMemoryEpisodes(): MemoryEpisode[] { return Array.from(this.dirtyMemoryEpisodeIds).map((id) => this.memoryEpisodes.get(id)!); }
 
   public async getObservation(id: string): Promise<ObservedHistoryRecord> {
     if (this.observations.has(id)) {

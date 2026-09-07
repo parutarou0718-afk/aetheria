@@ -35,6 +35,7 @@ import { ObservedHistoryRepository } from '../history/observedHistoryRepository'
 import { QuestRepository } from '../quest/questRepository';
 import { QuestSchema } from '../quest/questSchemas';
 import { QuestStateMachine } from '../quest/questStateMachine';
+import { MemoryEpisodeRepository } from '../context/memoryEpisodeRepository';
 
 function deepClone<T>(obj: T): T {
   if (obj === undefined || obj === null) return obj;
@@ -195,6 +196,9 @@ export class Recorder {
         }
         for (const quest of prepared.questWrites || []) {
           await QuestRepository.saveQuest(quest);
+        }
+        for (const episode of prepared.memoryEpisodeWrites || []) {
+          await MemoryEpisodeRepository.appendEpisode(episode);
         }
 
         // 2. Events
@@ -976,6 +980,14 @@ export class Recorder {
           break;
         }
 
+        case 'APPEND_MEMORY_EPISODE': {
+          const episode = payload.episode as any;
+          if (!episode?.id || !episode?.observerId || !episode?.text) throw new RecorderError('INVARIANT_FAILED', 'APPEND_MEMORY_EPISODE requires a complete episode payload.', prop.id);
+          workingSet.addMemoryEpisode({ ...episode, worldId, epoch: episode.epoch ?? effectiveEpoch, createdAt: episode.createdAt ?? new Date().toISOString() });
+          afterState = deepClone(episode);
+          break;
+        }
+
         case 'UPDATE_SEED_DEPENDENCIES': {
           const seedId = (entityId || payload.seedId) as string;
           const seed = await workingSet.getSeed(seedId);
@@ -1119,6 +1131,7 @@ export class Recorder {
       dependencyWrites: workingSet.getDirtyDependencies(),
       observationWrites: workingSet.getDirtyObservations(),
       questWrites: workingSet.getDirtyQuests(),
+      memoryEpisodeWrites: workingSet.getDirtyMemoryEpisodes(),
       eventWrites,
       changeLogs,
       worldSnapshotAfter,

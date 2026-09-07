@@ -5,6 +5,7 @@ import { StateChangeProposal } from './changeSchemas';
 import { DependencyEdge } from '../dependency/dependencyTypes';
 import { ObservedHistoryRecord } from '../history/observedHistoryTypes';
 import type { Quest } from '../quest/questTypes';
+import type { MemoryEpisode } from '../context/memoryEpisodeTypes';
 
 export interface PreparedCommit {
   worldId: string;
@@ -19,6 +20,7 @@ export interface PreparedCommit {
   dependencyWrites: DependencyEdge[];
   observationWrites: ObservedHistoryRecord[];
   questWrites: Quest[];
+  memoryEpisodeWrites: MemoryEpisode[];
   eventWrites: Event[];
   changeLogs: StateChangeLogEntry[];
   worldSnapshotAfter?: WorldSnapshot;
