@@ -18,7 +18,12 @@ export class ContextAssembler {
     if (policy.includeWorldAxioms) packet.world.axioms = (await WorldRepository.getWorldAxioms(request.worldId)).map(axiom => ({ statement: axiom.statement, immutable: axiom.immutable }));
     if (policy.includeActorPrivateState && actor) packet.actor = { id: actor.id, name: actor.name, title: actor.title, status: actor.status, locationId: actor.location_id, attributes: actor.attributes, resources: actor.resources, inventory: actor.inventory, currentAction: actor.current_action };
     if (policy.includeScene) packet.scene = { location: location ? { id: location.id, name: location.name, description: location.description, status: location.status } : undefined, characters: [] };
-    if (policy.includeQuests) packet.quests = (await QuestRepository.listActiveByAssignee(request.worldId, request.actorId)).slice(0, policy.limits.quests).map(q => ({ id: q.id, title: q.title, description: q.description, status: q.status, objectiveDescription: q.objective.description }));
+    if (policy.includeQuests) {
+      const quests = policy.observerScope === 'NPC' && request.npcId
+        ? [...await QuestRepository.listAvailableByGiver(request.worldId, request.npcId), ...(await QuestRepository.listActiveByAssignee(request.worldId, request.actorId)).filter(q => q.giver_character_id === request.npcId)]
+        : await QuestRepository.listActiveByAssignee(request.worldId, request.actorId);
+      packet.quests = quests.slice(0, policy.limits.quests).map(q => ({ id: q.id, title: q.title, description: q.description, status: q.status, objectiveDescription: q.objective.description }));
+    }
     const conversationId = request.purpose === 'NPC_DIALOGUE' && request.npcId ? `NPC:${request.npcId}:${request.actorId}` : `DM:${request.actorId}`;
     if (policy.includeRecentInteractions) packet.recentInteractions = await InteractionRepository.listRecentTurns(request.worldId, conversationId, policy.limits.recentTurns);
     if (policy.includeEpisodicMemory) packet.relevantMemories = await MemoryRetrievalService.retrieve({ worldId: request.worldId, observerType: policy.observerScope === 'NPC' ? 'CHARACTER' : 'PLAYER', observerId: policy.observerScope === 'NPC' ? request.npcId || request.actorId : request.actorId, userInput: request.userInput, locationId: actor?.location_id, limit: policy.limits.memories });

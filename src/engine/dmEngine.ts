@@ -10,6 +10,8 @@ import { parseDmResolutionIntent, type DmResolutionIntent } from './dm/dmResolut
 import { DmProposalBuilder } from './dm/dmProposalBuilder';
 import { DmRepairService } from './dm/dmRepairService';
 import { WorldReactionService } from './world/worldReactionService';
+import { ContextAssembler } from './context/contextAssembler';
+import { ContextRenderer } from './context/contextRenderer';
 
 export interface DMResponse {
   dmNarration: string;
@@ -40,7 +42,8 @@ export class DMEngine {
 
     try {
       this.recordLlmCall();
-      const initial = parseDmResolutionIntent(await aiService.generateJson(aiContext, this.buildSystemPrompt(narratorRole, pc.name, currentLocation?.name || 'Unknown location'), `Player action: ${playerActionText}`, { timeoutMs: 60000 }));
+      const packet = await ContextAssembler.assemble({ worldId: context.worldId, userId: context.userId, sessionId: context.sessionId, actorId: context.actorId, purpose: 'DM_ACTION', currentEpoch: globalWorld.snapshot.epoch, userInput: playerActionText });
+      const initial = parseDmResolutionIntent(await aiService.generateJson(aiContext, this.buildSystemPrompt(narratorRole, pc.name, currentLocation?.name || 'Unknown location'), `${ContextRenderer.render(packet)}${playerActionText}`, { timeoutMs: 60000 }));
       return await this.applyResolution(context, playerActionText, initial, narratorRole, false);
     } catch (error) {
       console.error('DM Engine Error:', error);
