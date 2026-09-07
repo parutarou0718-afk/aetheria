@@ -125,4 +125,15 @@ describe('Phase 4: Observed History Lock Tests', () => {
       observed_value: 'ALIVE', immutable_history: true,
     });
   });
+
+  it('treats an exact immutable observation at the same observer point as idempotent even with a regenerated proposal id', async () => {
+    const observation: ObservedHistoryRecord = {
+      id: 'obs-immutable-natural-key', world_id: worldId, observer_type: 'CHARACTER', observer_id: 'pc-player',
+      subject_type: 'CHARACTER', subject_id: 'npc-elder', observation_type: 'DIRECT_SIGHT',
+      observed_epoch: 2, recorded_epoch: 2, fact_path: 'status', observed_value: 'ALIVE', confidence: 1,
+      visibility: 'PRIVATE', immutable_history: true, metadata: { epistemic_status: 'CONFIRMED_FACT' },
+    };
+    await ObservedHistoryRepository.saveObservation(worldId, observation);
+    await expect(ObservedHistoryRepository.saveObservation(worldId, { ...observation, id: 'obs-immutable-natural-key-retry' })).resolves.toBeUndefined();
+  });
 });

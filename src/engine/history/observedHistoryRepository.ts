@@ -37,6 +37,11 @@ export class ObservedHistoryRepository {
       if (this.sameImmutableMaterial(existing, observation, worldId)) return;
       throw new Error(`Cannot overwrite immutable observation [${observation.id}].`);
     }
+    const existingAtObservationPoint = await this.getObservationAtPoint(worldId, observation);
+    if (existingAtObservationPoint?.immutable_history) {
+      if (this.sameImmutableMaterial(existingAtObservationPoint, observation, worldId)) return;
+      throw new Error(`Cannot overwrite immutable observation at ${observation.subject_id}.${observation.fact_path}.`);
+    }
 
     const sql = `
       INSERT INTO observed_history (
@@ -166,6 +171,15 @@ export class ObservedHistoryRepository {
       [worldId, observerType, observerId]
     );
     return rows.map(this.mapRowToObservation);
+  }
+
+  private static async getObservationAtPoint(worldId: string, observation: ObservedHistoryRecord): Promise<ObservedHistoryRecord | null> {
+    const row = await dbManager.get(
+      `SELECT * FROM observed_history WHERE world_id = ? AND observer_type = ? AND observer_id = ?
+       AND subject_type = ? AND subject_id = ? AND observed_epoch = ? AND fact_path = ?`,
+      [worldId, observation.observer_type, observation.observer_id, observation.subject_type, observation.subject_id, observation.observed_epoch, observation.fact_path],
+    );
+    return row ? this.mapRowToObservation(row) : null;
   }
 
   static async getKnowledgeObservations(
