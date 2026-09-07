@@ -75,14 +75,28 @@ describe('proposal runtime boundary', () => {
   });
 
   it('does not allow DM to read LLM-authored numeric gameplay deltas', () => {
-    const dmSource = readFileSync(resolve(root, 'src/engine/dmEngine.ts'), 'utf8');
-    expect(dmSource).not.toMatch(/parsed\.(?:hpDelta|mpDelta|goldDelta)/);
-    expect(dmSource).toMatch(/APPLY_SEMANTIC_EFFECT/);
+    const source = readFileSync(resolve(root, 'src/engine/dm/dmProposalBuilder.ts'), 'utf8');
+    expect(source).not.toMatch(/(?:hpDelta|mpDelta|goldDelta)/);
+    expect(source).toMatch(/APPLY_SEMANTIC_EFFECT/);
   });
 
   it('keeps semantic actor identity runtime-owned rather than trusting an LLM effect object', () => {
-    const dmSource = readFileSync(resolve(root, 'src/engine/dmEngine.ts'), 'utf8');
-    expect(dmSource).toMatch(/actorId:\s*context\.actorId/);
-    expect(dmSource).not.toMatch(/semanticEffect:\s*effect/);
+    const source = readFileSync(resolve(root, 'src/engine/dm/dmProposalBuilder.ts'), 'utf8');
+    expect(source).toMatch(/actorId:\s*context\.actorId/);
+    expect(source).not.toMatch(/actorId:\s*effect\./);
+  });
+
+  it('keeps one-shot DM repair free of persistence and runtime mutation dependencies', () => {
+    const source = readFileSync(resolve(root, 'src/engine/dm/dmRepairService.ts'), 'utf8');
+    expect(source).not.toMatch(/recorder|WorldRepository|\.save\s*\(|globalWorld|setRecorderWriteContext/);
+  });
+
+  it('keeps authoring authority and DM mode fixed by trusted runtime context', () => {
+    const authoring = readFileSync(resolve(root, 'src/application/worldAuthoringRuntime.ts'), 'utf8');
+    const dm = readFileSync(resolve(root, 'src/engine/dmEngine.ts'), 'utf8');
+    expect(authoring).toMatch(/authorityLevel:\s*'AUTHOR'/);
+    expect(authoring).not.toMatch(/parsed\.authorityLevel/);
+    expect(dm).toMatch(/context\.mode\s*!==\s*'IN_WORLD_ACTION'/);
+    expect(dm).not.toMatch(/context\.mode\s*=/);
   });
 });

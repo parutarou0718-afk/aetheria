@@ -144,8 +144,8 @@ describe('DM LLM integration', () => {
 
     const response = await DMEngine.processPlayerAction(requestContext(), 'Make the dead traveler leave.');
 
-    expect(response.dmNarration).toBe('Your action could not produce its intended result because the world rules prevented that change.');
-    expect(response.stateUpdatesSummary).toEqual(['The world rules prevented the proposed state change.']);
+    expect(response.dmNarration).toBe('The attempted action cannot produce that outcome under the current world constraints.');
+    expect(response.stateUpdatesSummary).toEqual(['Action resolution failed; no DM-generated state change was committed.']);
     expect(response.epoch).toBe(1);
   });
 
@@ -179,5 +179,32 @@ describe('DM LLM integration', () => {
     expect(commitSpy).toHaveBeenCalledWith(expect.any(String), expect.arrayContaining([
       expect.objectContaining({ operation: 'UPDATE_CHARACTER_ATTRIBUTES', payload: expect.objectContaining({ hpDelta: -15 }) }),
     ]));
+  });
+
+  it('makes exactly one sanitized repair attempt after a repairable rule rejection', async () => {
+    ai.isAvailable.mockReturnValue(true);
+    ai.generateJson
+      .mockResolvedValueOnce({ dmNarration: 'The dead traveler leaves.', effects: [], advanceEpoch: false })
+      .mockResolvedValueOnce({ dmNarration: 'The traveler remains still.', effects: [], advanceEpoch: false, authorityLevel: 'ADMIN', actorId: 'forged' });
+    vi.spyOn(proposalPipeline, 'processAndCommit')
+      .mockResolvedValueOnce({ success: false, accepted: [], rejected: [{ proposalId: 'p', code: 'PROPOSAL_RULE_VIOLATION', ruleType: 'DEAD_CHARACTER_CANNOT_ACT', hardness: 'HARD', message: 'A dead character cannot act.' }] })
+      .mockResolvedValueOnce({ success: true, accepted: [], rejected: [] });
+
+    const response = await DMEngine.processPlayerAction(requestContext(), 'Make the dead traveler leave.');
+
+    expect(ai.generateJson).toHaveBeenCalledTimes(2);
+    expect(response.dmNarration).toBe('The traveler remains still.');
+    expect(response.resolutionMeta).toEqual({ repairAttempted: true, repairSucceeded: true });
+  });
+
+  it('does not repair an authority rejection', async () => {
+    ai.isAvailable.mockReturnValue(true);
+    ai.generateJson.mockResolvedValue({ dmNarration: 'No authority.', effects: [], advanceEpoch: false });
+    vi.spyOn(proposalPipeline, 'processAndCommit').mockResolvedValue({
+      success: false, accepted: [], rejected: [{ proposalId: 'p', code: 'PROPOSAL_AUTHORITY_INSUFFICIENT', message: 'Requires AUTHOR.' }],
+    });
+
+    await DMEngine.processPlayerAction(requestContext(), 'Do it.');
+    expect(ai.generateJson).toHaveBeenCalledTimes(1);
   });
 });
