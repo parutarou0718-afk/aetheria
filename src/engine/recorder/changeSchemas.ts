@@ -43,6 +43,7 @@ export const StateChangeOperationEnum = z.enum([
   'REGISTER_WAKE_SIGNAL',
   'INVALIDATE_TRANSACTION',
   'PAUSE_TRANSACTION',
+  'APPLY_SEMANTIC_EFFECT',
 ]);
 
 export type StateChangeOperation = z.infer<typeof StateChangeOperationEnum>;
@@ -126,6 +127,8 @@ export const SemanticEffectSchema = z.object({
   type: z.string(),
   magnitude: z.string().optional(),
   target: z.string().optional(),
+  resource: z.string().optional(),
+  targetEntityId: z.string().optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
