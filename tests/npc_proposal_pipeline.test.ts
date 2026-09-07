@@ -7,6 +7,7 @@ import { NPCCognitionEngine } from '../src/engine/npcCognition';
 import { proposalPipeline } from '../src/engine/proposal/proposalPipeline';
 import { globalWorld, setRecorderWriteContext } from '../src/engine/worldState';
 import { WorldRepository } from '../src/engine/world/worldRepository';
+import { WorldCacheLoader } from '../src/engine/world/worldCacheLoader';
 import { bootstrapWithDefaultWorld } from './helpers/worldFixture';
 
 function requestContext() {
@@ -70,5 +71,21 @@ describe('NPC proposal authority', () => {
     const updatedNpc = globalWorld.characters.get('npc-elder')!;
     expect(updatedNpc.memory.short_term).toHaveLength(5);
     expect(updatedNpc.memory.compressed).toContain('A new memory.');
+  });
+
+  it('persists NPC dialogue memory and relationship changes across a cache reload', async () => {
+    await NPCCognitionEngine.generateNPCDialogue(requestContext(), 'npc-elder', 'I will remember this promise.', 'Player');
+
+    const beforeReload = globalWorld.characters.get('npc-elder')!;
+    const expectedMemory = beforeReload.memory.short_term.find((memory) => memory.text.includes('I will remember this promise.'));
+    const expectedRelationship = beforeReload.relationships.find((relationship) => relationship.target_id === 'pc-player');
+    expect(expectedMemory).toBeDefined();
+    expect(expectedRelationship).toEqual(expect.objectContaining({ trust: expect.any(Number), favor: expect.any(Number) }));
+
+    await WorldCacheLoader.reload(globalWorld.snapshot.id);
+
+    const reloadedNpc = globalWorld.characters.get('npc-elder')!;
+    expect(reloadedNpc.memory.short_term).toContainEqual(expectedMemory);
+    expect(reloadedNpc.relationships.find((relationship) => relationship.target_id === 'pc-player')).toEqual(expectedRelationship);
   });
 });

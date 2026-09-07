@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - Preserve the current single-active-world-per-process MVP model.
-- `SYSTEM_USER` is development-only fallback identity.
+- Player-facing DM and NPC requests use caller identity. `SYSTEM_USER` remains the temporary attribution for backend Causality and Genesis workloads until a future billing policy distinguishes system-funded work from world-owner work (P1 identity attribution debt).
 - No direct NPC memory or relationship mutation outside Recorder.
 - Run lint, direct-write audit, tests, build, verify, and diff check before commit.
 
