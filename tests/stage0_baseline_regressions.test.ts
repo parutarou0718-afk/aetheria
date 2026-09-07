@@ -9,9 +9,11 @@ vi.mock('../src/engine/recorder/recorder', () => ({ recorder }));
 import { CausalityEngine } from '../src/engine/causality';
 import { NPCCognitionEngine } from '../src/engine/npcCognition';
 import { globalWorld, setRecorderWriteContext } from '../src/engine/worldState';
+import { WorldRepository } from '../src/engine/world/worldRepository';
+import { dbManager } from '../src/engine/persistence/database';
 
 describe('Stage 0 baseline regressions', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     delete process.env.LLM_API_KEY;
     recorder.commit.mockReset();
     recorder.commit.mockResolvedValue({ eventsGenerated: [] });
@@ -37,6 +39,9 @@ describe('Stage 0 baseline regressions', () => {
     } finally {
       setRecorderWriteContext(false);
     }
+    await dbManager.initialize();
+    await WorldRepository.saveWorldSnapshot(globalWorld.snapshot);
+    await WorldRepository.saveSeed(globalWorld.snapshot.id, globalWorld.seeds.get('seed-custom')!);
   });
 
   it('keeps NPC fallback world-neutral and contextual', async () => {
