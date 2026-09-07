@@ -87,7 +87,7 @@ export class DMEngine {
       const systemPrompt = `${buildDmPromptHeader(narratorRole)}
 设计核心哲学: 开放世界沙盒。精髓在于【世界推演】而非固定脚本剧本！
 - 没有固定强制的线性剧情主线，由玩家自由决定道路与世界方向。
-- 玩家随时可以自定义或补充世界观设定，你必须接纳并遵守该世界的宪法与公理！
+- 普通游戏输入只能解释为世界内行动或请求；不得自动修改既有世界规则或已确认事实。
 
 当前纪元 (Epoch): ${globalWorld.snapshot.epoch}
 
@@ -375,9 +375,14 @@ ${axiomsFormatted}
         });
         if (!pipelineResult.success) {
           console.warn('[DMEngine] Proposal pipeline rejected action resolution:', pipelineResult.rejected.map((rejection) => rejection.message));
+          const blockedByWorldRule = pipelineResult.rejected.some((rejection) => rejection.code === 'PROPOSAL_RULE_VIOLATION');
           return {
-            dmNarration: buildDmErrorNarration(narratorRole),
-            stateUpdatesSummary: ['Action resolution failed; no DM-generated state change was committed.'],
+            dmNarration: blockedByWorldRule
+              ? 'Your action could not produce its intended result because the world rules prevented that change.'
+              : buildDmErrorNarration(narratorRole),
+            stateUpdatesSummary: [blockedByWorldRule
+              ? 'The world rules prevented the proposed state change.'
+              : 'Action resolution failed; no DM-generated state change was committed.'],
             currentLocationName: currentLocation?.name || '未知位置',
             epoch: globalWorld.snapshot.epoch,
           };

@@ -5,7 +5,13 @@ const DEFAULT_RULES: Array<Omit<WorldRule, 'worldId'>> = [
   { id: 'builtin/dead-character-cannot-act', type: 'DEAD_CHARACTER_CANNOT_ACT', hardness: 'HARD', enabled: true },
   { id: 'builtin/resource-non-negative', type: 'RESOURCE_NON_NEGATIVE', hardness: 'HARD', enabled: true },
   { id: 'builtin/travel-requires-route', type: 'TRAVEL_REQUIRES_ROUTE', hardness: 'HARD', enabled: true },
-  { id: 'builtin/immutable-fact-protected', type: 'IMMUTABLE_FACT_PROTECTED', hardness: 'HARD', enabled: true },
+  {
+    id: 'builtin/immutable-fact-protected',
+    type: 'IMMUTABLE_FACT_PROTECTED',
+    hardness: 'HARD',
+    enabled: true,
+    metadata: { protectedModel: 'HiddenTruth.never_changes' },
+  },
   { id: 'builtin/location-access-valid', type: 'LOCATION_ACCESS_VALID', hardness: 'HARD', enabled: true },
   { id: 'builtin/history-immutable', type: 'HISTORY_IMMUTABLE', hardness: 'HARD', enabled: true, metadata: { delegatedToRecorder: true } },
 ];

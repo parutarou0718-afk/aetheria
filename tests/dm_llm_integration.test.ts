@@ -132,4 +132,20 @@ describe('DM LLM integration', () => {
     expect(response.epoch).toBe(epochBefore);
     expect(globalWorld.snapshot.epoch).toBe(epochBefore);
   });
+
+  it('uses neutral legal narration when a world rule rejects the DM proposal batch', async () => {
+    ai.isAvailable.mockReturnValue(true);
+    ai.generateJson.mockResolvedValue({ dmNarration: 'The dead traveler walks away.', advanceEpoch: true });
+    vi.spyOn(proposalPipeline, 'processAndCommit').mockResolvedValue({
+      success: false,
+      accepted: [],
+      rejected: [{ proposalId: 'p', code: 'PROPOSAL_RULE_VIOLATION', ruleType: 'DEAD_CHARACTER_CANNOT_ACT', message: 'A dead character cannot perform this action.' }],
+    });
+
+    const response = await DMEngine.processPlayerAction(requestContext(), 'Make the dead traveler leave.');
+
+    expect(response.dmNarration).toBe('Your action could not produce its intended result because the world rules prevented that change.');
+    expect(response.stateUpdatesSummary).toEqual(['The world rules prevented the proposed state change.']);
+    expect(response.epoch).toBe(1);
+  });
 });

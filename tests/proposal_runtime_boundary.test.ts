@@ -37,4 +37,11 @@ describe('proposal runtime boundary', () => {
     expect(npcSource).not.toMatch(/\.relationships\.(?:push|unshift|splice)\s*\(/);
     expect(npcSource).not.toMatch(/setRecorderWriteContext\s*\(/);
   });
+
+  it('keeps WorldRuleValidator deterministic and read-only', () => {
+    const validatorSource = readFileSync(resolve(root, 'src/engine/constraints/rules/worldRuleValidator.ts'), 'utf8');
+    expect(validatorSource).not.toMatch(/globalWorld|aiService|llmClient|generateJson|generateText/);
+    expect(validatorSource).not.toMatch(/recorder\s*\.\s*commit\s*\(/);
+    expect(validatorSource).not.toMatch(/setRecorderWriteContext\s*\(/);
+  });
 });
