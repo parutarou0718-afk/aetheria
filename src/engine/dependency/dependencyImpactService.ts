@@ -99,15 +99,26 @@ export class DependencyImpactService {
       nonQuestImpacts,
       epoch
     );
+    const nonQuestCommittedInvalidations = nonQuestImpacts.length;
+    const questInvalidationProposalIds = new Set<string>();
     const byQuest = new Map<string, typeof questImpacts>();
     for (const impact of questImpacts) byQuest.set(impact.sourceId, [...(byQuest.get(impact.sourceId) ?? []), impact]);
     for (const [questId, impactsForQuest] of byQuest) {
       const quest = await QuestRepository.getQuest(worldId, questId);
-      if (!quest || ['COMPLETED', 'FAILED', 'INVALIDATED'].includes(quest.status)) continue;
+      if (!quest) continue;
+      if (['COMPLETED', 'FAILED', 'INVALIDATED'].includes(quest.status)) {
+        // Legacy terminal quests can retain ACTIVE dependencies from older
+        // runtime versions. Clean those in this batch, but never reopen or
+        // re-transition the terminal quest.
+        proposals.push(...(await QuestService.buildDependencyCleanupProposals({ worldId, quest, epoch })));
+        continue;
+      }
       const failedIds = new Set(impactsForQuest.map((impact) => impact.dependencyId));
       for (const impact of impactsForQuest) {
+        const proposalId = `prop-invalidate-quest-dependency-${impact.dependencyId}-${epoch}`;
+        questInvalidationProposalIds.add(proposalId);
         proposals.push(createStateChangeProposal({
-          id: `prop-invalidate-quest-dependency-${impact.dependencyId}-${epoch}`,
+          id: proposalId,
           operation: 'UPDATE_DEPENDENCY', entityType: 'DEPENDENCY', entityId: impact.dependencyId,
           payload: { dependencyId: impact.dependencyId, status: 'INVALIDATED', invalidatedAtEpoch: epoch, invalidationReason: impact.reason },
           effectiveEpoch: epoch, preconditions: [], source: { type: 'SYSTEM', id: 'DependencyImpactService' },
@@ -175,10 +186,13 @@ export class DependencyImpactService {
       warnings.push(...secondaryRes.warnings);
     }
 
+    const committedQuestInvalidations = commitRes?.success
+      ? Array.from(questInvalidationProposalIds).filter((proposalId) => commitRes.appliedProposalIds.includes(proposalId)).length
+      : 0;
     return {
       propagationId: ctx.propagationId,
       evaluatedDependencies: impacts.length,
-      invalidatedDependencies: commitRes?.success ? validImpacts.length : 0,
+      invalidatedDependencies: nonQuestCommittedInvalidations + committedQuestInvalidations,
       affectedSources: Array.from(new Set(validImpacts.map((i) => `${i.sourceType}:${i.sourceId}`))),
       committedProposalCount: nextCommittedCount,
       warnings,
