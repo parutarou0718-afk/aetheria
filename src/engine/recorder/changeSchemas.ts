@@ -121,6 +121,7 @@ export const CausalBasisSchema = z.object({
   type: z.enum(['FACT', 'EVENT', 'ENTITY_STATE', 'RULE', 'PLAYER_ACTION', 'SYSTEM_EVENT']),
   id: z.string().optional(),
   description: z.string().optional(),
+  entityType: z.string().optional(),
 });
 
 export const SemanticEffectSchema = z.object({
