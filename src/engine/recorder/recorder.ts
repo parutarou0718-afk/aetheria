@@ -870,6 +870,9 @@ export class Recorder {
             throw new RecorderError('INVARIANT_FAILED', 'CREATE_DEPENDENCY missing payload.dependency or payload.edge', prop.id);
           }
           const edge = (payload.dependency || payload.edge) as any;
+          if (edge.source_type === 'QUEST' && !['FAIL_SOURCE', 'INVALIDATE_SOURCE'].includes(edge.failure_policy)) {
+            throw new RecorderError('INVARIANT_FAILED', 'QUEST dependencies only support FAIL_SOURCE or INVALIDATE_SOURCE.', prop.id);
+          }
           await workingSet.assertDependencyDoesNotExist(edge.id, prop.id);
           workingSet.addDependency(edge);
           afterState = deepClone(edge);
