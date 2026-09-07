@@ -9,6 +9,7 @@ import { globalWorld, setRecorderWriteContext } from '../src/engine/worldState';
 import { WorldRepository } from '../src/engine/world/worldRepository';
 import { WorldCacheLoader } from '../src/engine/world/worldCacheLoader';
 import { bootstrapWithDefaultWorld } from './helpers/worldFixture';
+import { QuestRepository } from '../src/engine/quest/questRepository';
 
 function requestContext() {
   return {
@@ -39,6 +40,15 @@ describe('NPC proposal authority', () => {
         expect.objectContaining({ operation: 'CREATE_OBSERVED_HISTORY', payload: expect.objectContaining({ factPath: 'dialogue.statement', metadata: expect.objectContaining({ epistemic_status: 'CLAIM' }) }) }),
       ]),
     }));
+  });
+
+  it('accepts only an available quest offered by the current NPC in the same atomic batch', async () => {
+    const questId = `quest-npc-${crypto.randomUUID()}`;
+    await QuestRepository.saveQuest({ id: questId, world_id: globalWorld.snapshot.id, title: 'Reach the Ruins', description: 'Travel there.', status: 'AVAILABLE', giver_character_id: 'npc-elder', assignee_character_id: null, objective: { description: 'Reach the ruins.', targetType: 'CHARACTER', targetId: 'pc-player', expectedCondition: { operator: 'EQUALS', fieldPath: 'location_id', value: 'loc-ruins' } }, dependency_ids: [], created_at_epoch: 1, accepted_at_epoch: null, resolved_at_epoch: null, failure_reason: null });
+    ai.generateJson.mockResolvedValue({ reply: 'I accept your help.', trustDelta: 1, favorDelta: 0, questIntent: { action: 'ACCEPT', questId } });
+    const result = await NPCCognitionEngine.generateNPCDialogue(requestContext(), 'npc-elder', 'I will go.', 'Player');
+    expect(result.actionTriggered).toBe(`QUEST_ACCEPTED:${questId}`);
+    expect(await QuestRepository.getQuest(globalWorld.snapshot.id, questId)).toMatchObject({ status: 'ACTIVE', assignee_character_id: 'pc-player' });
   });
 
   it('does not report relationship changes when the pipeline rejects', async () => {

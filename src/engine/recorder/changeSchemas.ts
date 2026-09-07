@@ -44,6 +44,11 @@ export const StateChangeOperationEnum = z.enum([
   'INVALIDATE_TRANSACTION',
   'PAUSE_TRANSACTION',
   'APPLY_SEMANTIC_EFFECT',
+  'CREATE_QUEST',
+  'ACCEPT_QUEST',
+  'COMPLETE_QUEST',
+  'FAIL_QUEST',
+  'INVALIDATE_QUEST',
 ]);
 
 export type StateChangeOperation = z.infer<typeof StateChangeOperationEnum>;

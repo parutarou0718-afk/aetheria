@@ -4,7 +4,8 @@ export type DependencySourceType =
   | 'ORGANIZATION_PROJECT'
   | 'CHARACTER_GOAL'
   | 'SCHEDULED_CHECKPOINT'
-  | 'WORLD_COMMITMENT';
+  | 'WORLD_COMMITMENT'
+  | 'QUEST';
 
 export type DependencyTargetType =
   | 'CHARACTER'

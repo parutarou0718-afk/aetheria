@@ -9,6 +9,7 @@ import type { GameRequestContext } from '../application/gameRequestContext';
 import { parseDmResolutionIntent, type DmResolutionIntent } from './dm/dmResolutionIntent';
 import { DmProposalBuilder } from './dm/dmProposalBuilder';
 import { DmRepairService } from './dm/dmRepairService';
+import { WorldReactionService } from './world/worldReactionService';
 
 export interface DMResponse {
   dmNarration: string;
@@ -65,6 +66,7 @@ export class DMEngine {
       }
       return this.rejectionResponse(narratorRole, currentLocation?.name || 'Unknown location', result.rejected, repaired);
     }
+    if (result.commitResult) await WorldReactionService.processCommittedChanges({ worldId: context.worldId, commitResult: result.commitResult });
     if (resolution.collectedEvidence?.truthId && resolution.collectedEvidence.evidenceName) {
       await TruthsEngine.addEvidenceToTruth(resolution.collectedEvidence.truthId, resolution.collectedEvidence.evidenceName);
       built.updatesSummary.push('Evidence recorded.');

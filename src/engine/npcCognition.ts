@@ -6,6 +6,18 @@ import { proposalPipeline } from './proposal/proposalPipeline';
 import type { GameRequestContext } from '../application/gameRequestContext';
 import { ObservationService } from './history/observationService';
 import { ObserverKnowledgeService } from './history/observerKnowledgeService';
+import { z } from 'zod';
+import { QuestRepository } from './quest/questRepository';
+import { toQuestPublicView } from './quest/questPublicView';
+import { QuestService } from './quest/questService';
+import { WorldReactionService } from './world/worldReactionService';
+
+export const NpcDialogueIntentSchema = z.object({
+  reply: z.string().min(1),
+  trustDelta: z.number().min(-10).max(10).default(0),
+  favorDelta: z.number().min(-10).max(10).default(0),
+  questIntent: z.object({ action: z.literal('ACCEPT'), questId: z.string().min(1) }).nullable().optional(),
+}).strip();
 
 export class NPCCognitionEngine {
   public static recallMemories(npc: Character, query: string): string[] {
@@ -28,6 +40,8 @@ export class NPCCognitionEngine {
     const knowledge = await new ObserverKnowledgeService().getKnowledgeSnapshot({
       worldId: context.worldId, observerType: 'CHARACTER', observerId: npc.id, atEpoch: globalWorld.snapshot.epoch,
     });
+    const offeredQuests = (await QuestRepository.listAvailableByGiver(context.worldId, npc.id)).map(toQuestPublicView);
+    const activeQuests = (await QuestRepository.listActiveByAssignee(context.worldId, context.actorId)).filter((quest) => quest.giver_character_id === npc.id).map(toQuestPublicView);
     const aiContext = { userId: context.userId, worldId: context.worldId, purpose: 'NPC_DIALOGUE' as const };
     let reply: string;
     let trustDelta = 0;
@@ -41,13 +55,18 @@ export class NPCCognitionEngine {
         globalWorld.totalLLMCalls += 1;
         globalWorld.llmCallsThisEpoch += 1;
         const location = globalWorld.locations.get(npc.location_id);
-        const parsed = await aiService.generateJson(aiContext,
-          `You roleplay ${npc.name}. Location: ${location?.name || 'unknown'}. Goal: ${npc.goal.primary}. Memories: ${memories.join('; ') || 'none'}. Known confirmed facts: ${this.renderKnowledge(knowledge.confirmedFacts)}. Claims: ${this.renderKnowledge(knowledge.claims)}. Rumors: ${this.renderKnowledge(knowledge.rumors)}. Inferences: ${this.renderKnowledge(knowledge.inferences)}. Do not infer or reveal hidden world truth not listed here.`,
-          `Player ${resolvedPlayerName} says: "${playerMessage}". Return JSON: {"reply":"string","trustDelta":0,"favorDelta":0}.`,
+        const raw = await aiService.generateJson(aiContext,
+          `You roleplay ${npc.name}. Location: ${location?.name || 'unknown'}. Goal: ${npc.goal.primary}. Memories: ${memories.join('; ') || 'none'}. Known confirmed facts: ${this.renderKnowledge(knowledge.confirmedFacts)}. Claims: ${this.renderKnowledge(knowledge.claims)}. Rumors: ${this.renderKnowledge(knowledge.rumors)}. Inferences: ${this.renderKnowledge(knowledge.inferences)}. Public quests you offer: ${JSON.stringify(offeredQuests)}. This player's active quests from you: ${JSON.stringify(activeQuests)}. Do not infer or reveal hidden world truth, raw objective conditions, dependencies, or private identifiers not listed here.`,
+          `Player ${resolvedPlayerName} says: "${playerMessage}". Return JSON: {"reply":"string","trustDelta":0,"favorDelta":0,"questIntent":{"action":"ACCEPT","questId":"optional offered quest id"}|null}.`,
           { timeoutMs: 60000 }) as any;
-        reply = typeof parsed.reply === 'string' && parsed.reply.trim() ? parsed.reply : `${npc.name} considers your words.`;
-        trustDelta = typeof parsed.trustDelta === 'number' ? parsed.trustDelta : 0;
-        favorDelta = typeof parsed.favorDelta === 'number' ? parsed.favorDelta : 0;
+        const parsed = NpcDialogueIntentSchema.safeParse(raw);
+        const intent = parsed.success ? parsed.data : { reply: `${npc.name} considers your words.`, trustDelta: 0, favorDelta: 0, questIntent: null };
+        reply = intent.reply;
+        trustDelta = intent.trustDelta;
+        favorDelta = intent.favorDelta;
+        const acceptedQuestId = await this.validQuestAcceptance(context, npc.id, intent.questIntent?.questId);
+        const committed = await this.commitDialogueEffects(context, npc, resolvedPlayerName, playerMessage, trustDelta, favorDelta, acceptedQuestId);
+        return { reply, trustDelta: committed ? trustDelta : 0, favorDelta: committed ? favorDelta : 0, ...(committed && acceptedQuestId ? { actionTriggered: `QUEST_ACCEPTED:${acceptedQuestId}` } : {}) };
       } catch (error) {
         console.error('NPC dialogue generation failed:', error);
         return { reply: this.buildFallbackReply(npc, resolvedPlayerName, memories), trustDelta: 0, favorDelta: 0 };
@@ -57,7 +76,13 @@ export class NPCCognitionEngine {
     return { reply, trustDelta: committed ? trustDelta : 0, favorDelta: committed ? favorDelta : 0 };
   }
 
-  private static async commitDialogueEffects(context: GameRequestContext, npc: Character, playerName: string, message: string, trustDelta: number, favorDelta: number): Promise<boolean> {
+  private static async validQuestAcceptance(context: GameRequestContext, npcId: string, questId?: string): Promise<string | undefined> {
+    if (!questId || !globalWorld.characters.has(context.actorId)) return undefined;
+    const quest = await QuestRepository.getQuest(context.worldId, questId);
+    return quest?.status === 'AVAILABLE' && quest.giver_character_id === npcId ? quest.id : undefined;
+  }
+
+  private static async commitDialogueEffects(context: GameRequestContext, npc: Character, playerName: string, message: string, trustDelta: number, favorDelta: number, acceptedQuestId?: string): Promise<boolean> {
     const worldId = context.worldId;
     const player = globalWorld.characters.get(context.actorId);
     if (!worldId) return false;
@@ -82,8 +107,11 @@ export class NPCCognitionEngine {
       ...directObservations,
       ...playerObservations,
       ...dialogueClaim,
+      ...(acceptedQuestId ? [QuestService.buildAcceptQuestProposal({ worldId, questId: acceptedQuestId, actorId: context.actorId, epoch: globalWorld.snapshot.epoch })] : []),
     ];
-    return (await proposalPipeline.processAndCommit({ worldId, proposals })).success;
+    const result = await proposalPipeline.processAndCommit({ worldId, proposals });
+    if (result.success && result.commitResult) await WorldReactionService.processCommittedChanges({ worldId, commitResult: result.commitResult });
+    return result.success;
   }
 
   private static buildFallbackReply(npc: Character, playerName: string, memories: string[]): string {

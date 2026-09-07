@@ -6,6 +6,8 @@ import { DependencyEdge } from '../dependency/dependencyTypes';
 import { DependencyRepository } from '../dependency/dependencyRepository';
 import { ObservedHistoryRecord } from '../history/observedHistoryTypes';
 import { ObservedHistoryRepository } from '../history/observedHistoryRepository';
+import { QuestRepository } from '../quest/questRepository';
+import type { Quest } from '../quest/questTypes';
 
 function deepClone<T>(obj: T): T {
   if (obj === undefined || obj === null) return obj;
@@ -22,6 +24,7 @@ export class RecorderWorkingSet {
   private checkpoints = new Map<string, ScheduledCheckpoint>();
   private dependencies = new Map<string, DependencyEdge>();
   private observations = new Map<string, ObservedHistoryRecord>();
+  private quests = new Map<string, Quest>();
 
   private originalCharacters = new Map<string, Character>();
   private originalLocations = new Map<string, Location>();
@@ -32,6 +35,7 @@ export class RecorderWorkingSet {
   private originalCheckpoints = new Map<string, ScheduledCheckpoint>();
   private originalDependencies = new Map<string, DependencyEdge>();
   private originalObservations = new Map<string, ObservedHistoryRecord>();
+  private originalQuests = new Map<string, Quest>();
 
   private originalSnapshot?: WorldSnapshot;
   private workingSnapshot?: WorldSnapshot;
@@ -45,6 +49,7 @@ export class RecorderWorkingSet {
   private dirtyCheckpointIds = new Set<string>();
   private dirtyDependencyIds = new Set<string>();
   private dirtyObservationIds = new Set<string>();
+  private dirtyQuestIds = new Set<string>();
 
   constructor(public readonly worldId: string) {}
 
@@ -416,6 +421,35 @@ export class RecorderWorkingSet {
 
   public getDirtyDependencies(): DependencyEdge[] {
     return Array.from(this.dirtyDependencyIds).map((id) => this.dependencies.get(id)!);
+  }
+
+  public async getQuest(id: string): Promise<Quest> {
+    if (this.quests.has(id)) return this.quests.get(id)!;
+    const fromRepo = await QuestRepository.getQuest(this.worldId, id);
+    if (!fromRepo) throw new RecorderError('QUEST_NOT_FOUND', `Quest [${id}] not found in world [${this.worldId}]`);
+    this.originalQuests.set(id, deepClone(fromRepo));
+    const workCopy = deepClone(fromRepo);
+    this.quests.set(id, workCopy);
+    return workCopy;
+  }
+
+  public markQuestDirty(id: string): void { this.dirtyQuestIds.add(id); }
+
+  public addQuest(quest: Quest): Quest {
+    const copy = deepClone(quest);
+    this.quests.set(copy.id, copy);
+    this.dirtyQuestIds.add(copy.id);
+    return copy;
+  }
+
+  public async assertQuestDoesNotExist(id: string, proposalId?: string): Promise<void> {
+    if (this.quests.has(id) || await QuestRepository.getQuest(this.worldId, id)) {
+      throw new RecorderError('DUPLICATE_ENTITY_ID', `Quest [${id}] already exists`, proposalId);
+    }
+  }
+
+  public getDirtyQuests(): Quest[] {
+    return Array.from(this.dirtyQuestIds).map((id) => this.quests.get(id)!);
   }
 
   public async getObservation(id: string): Promise<ObservedHistoryRecord> {

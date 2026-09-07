@@ -375,4 +375,21 @@ CREATE TABLE IF NOT EXISTS events (
   created_at_epoch INTEGER NOT NULL,
   FOREIGN KEY(world_id) REFERENCES worlds(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS quests (
+  id TEXT PRIMARY KEY,
+  world_id TEXT NOT NULL,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL,
+  status TEXT NOT NULL,
+  giver_character_id TEXT,
+  assignee_character_id TEXT,
+  objective_json TEXT NOT NULL,
+  dependency_ids_json TEXT NOT NULL DEFAULT '[]',
+  created_at_epoch INTEGER NOT NULL,
+  accepted_at_epoch INTEGER,
+  resolved_at_epoch INTEGER,
+  failure_reason TEXT,
+  FOREIGN KEY(world_id) REFERENCES worlds(id) ON DELETE CASCADE
+);
 `;

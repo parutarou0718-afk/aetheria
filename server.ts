@@ -22,6 +22,8 @@ import { createStateChangeProposal } from './src/engine/proposal/proposalFactory
 import { proposalPipeline } from './src/engine/proposal/proposalPipeline';
 import { gameApplicationService } from './src/application/gameApplicationService';
 import type { GameRequestContext } from './src/application/gameRequestContext';
+import { QuestRepository } from './src/engine/quest/questRepository';
+import { toQuestPublicView } from './src/engine/quest/questPublicView';
 
 dotenv.config();
 
@@ -288,6 +290,14 @@ async function startServer() {
   });
 
   registerCharacterActionRoutes(app);
+
+  app.get('/api/v1/quests', async (_req, res) => {
+    res.json((await QuestRepository.listQuests(globalWorld.snapshot.id)).map(toQuestPublicView));
+  });
+  app.get('/api/v1/quests/active', async (_req, res) => {
+    const player = createDevelopmentGameRequestContext().actorId;
+    res.json((await QuestRepository.listActiveByAssignee(globalWorld.snapshot.id, player)).map(toQuestPublicView));
+  });
 
   // 9. NPC Dialogue (provider-neutral LLM)
   app.post('/api/v1/characters/:id/dialogue', async (req, res) => {

@@ -32,6 +32,9 @@ import { CachePublisher, PreparedCommit } from './cachePublisher';
 import { WorldCacheLoader } from '../world/worldCacheLoader';
 import { DependencyRepository } from '../dependency/dependencyRepository';
 import { ObservedHistoryRepository } from '../history/observedHistoryRepository';
+import { QuestRepository } from '../quest/questRepository';
+import { QuestSchema } from '../quest/questSchemas';
+import { QuestStateMachine } from '../quest/questStateMachine';
 
 function deepClone<T>(obj: T): T {
   if (obj === undefined || obj === null) return obj;
@@ -189,6 +192,9 @@ export class Recorder {
         }
         for (const obs of prepared.observationWrites || []) {
           await ObservedHistoryRepository.saveObservation(worldId, obs);
+        }
+        for (const quest of prepared.questWrites || []) {
+          await QuestRepository.saveQuest(quest);
         }
 
         // 2. Events
@@ -870,6 +876,51 @@ export class Recorder {
           break;
         }
 
+        case 'CREATE_QUEST': {
+          const parsed = QuestSchema.safeParse(payload.quest ?? payload);
+          if (!parsed.success) throw new RecorderError('INVARIANT_FAILED', `Invalid quest definition: ${parsed.error.message}`, prop.id);
+          const quest = parsed.data;
+          if (quest.world_id !== worldId) throw new RecorderError('INVARIANT_FAILED', 'Quest world_id must match commit world', prop.id);
+          await workingSet.assertQuestDoesNotExist(quest.id, prop.id);
+          workingSet.addQuest(quest);
+          afterState = deepClone(quest);
+          break;
+        }
+
+        case 'ACCEPT_QUEST': {
+          const questId = String(entityId || payload.questId || '');
+          const actorId = String(prop.actorId || '');
+          if (!questId || !actorId || payload.assigneeCharacterId !== actorId) {
+            throw new RecorderError('INVARIANT_FAILED', 'ACCEPT_QUEST requires a trusted actor and matching assignee', prop.id);
+          }
+          const quest = await workingSet.getQuest(questId);
+          if (!QuestStateMachine.canTransition(quest.status, 'ACTIVE')) throw new RecorderError('INVARIANT_FAILED', 'Quest is not available for acceptance', prop.id);
+          await workingSet.getCharacter(actorId);
+          beforeState = deepClone(quest);
+          quest.status = 'ACTIVE';
+          quest.assignee_character_id = actorId;
+          quest.accepted_at_epoch = effectiveEpoch;
+          workingSet.markQuestDirty(quest.id);
+          afterState = deepClone(quest);
+          break;
+        }
+
+        case 'COMPLETE_QUEST':
+        case 'FAIL_QUEST':
+        case 'INVALIDATE_QUEST': {
+          const questId = String(entityId || payload.questId || '');
+          const quest = await workingSet.getQuest(questId);
+          const nextStatus = operation === 'COMPLETE_QUEST' ? 'COMPLETED' : operation === 'FAIL_QUEST' ? 'FAILED' : 'INVALIDATED';
+          if (!QuestStateMachine.canTransition(quest.status, nextStatus)) throw new RecorderError('INVARIANT_FAILED', `Quest cannot transition from ${quest.status} to ${nextStatus}`, prop.id);
+          beforeState = deepClone(quest);
+          quest.status = nextStatus;
+          quest.resolved_at_epoch = effectiveEpoch;
+          if (nextStatus !== 'COMPLETED') quest.failure_reason = typeof payload.reason === 'string' ? payload.reason : null;
+          workingSet.markQuestDirty(quest.id);
+          afterState = deepClone(quest);
+          break;
+        }
+
         case 'UPDATE_DEPENDENCY': {
           const depId = (entityId || payload.dependencyId || payload.id) as string;
           const dep = await workingSet.getDependency(depId);
@@ -1034,6 +1085,13 @@ export class Recorder {
         changedFieldPaths: ['status', 'current_checkpoint_index'],
       });
     }
+    for (const quest of workingSet.getDirtyQuests()) {
+      changedTargets.push({
+        targetType: 'QUEST',
+        targetId: quest.id,
+        changedFieldPaths: ['status', 'assignee_character_id'],
+      });
+    }
 
     // Batch Invariant Check on the final working set
     const finalSnapshot = worldSnapshotAfter || await workingSet.getWorldSnapshot();
@@ -1057,6 +1115,7 @@ export class Recorder {
       checkpointWrites: workingSet.getDirtyCheckpoints(),
       dependencyWrites: workingSet.getDirtyDependencies(),
       observationWrites: workingSet.getDirtyObservations(),
+      questWrites: workingSet.getDirtyQuests(),
       eventWrites,
       changeLogs,
       worldSnapshotAfter,

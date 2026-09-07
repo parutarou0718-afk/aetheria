@@ -188,6 +188,20 @@ export class DependencyProposalBuilder {
           }
           break;
         }
+
+        case 'QUEST': {
+          if (!['FAIL_SOURCE', 'INVALIDATE_SOURCE'].includes(failurePolicy)) {
+            throw new Error(`Quest dependency [${sourceId}] has unsupported failure policy [${failurePolicy}].`);
+          }
+          proposals.push({
+            id: `prop-${failurePolicy === 'FAIL_SOURCE' ? 'fail' : 'inval'}-quest-${sourceId}-${epoch}-${Math.random().toString(36).substring(2, 6)}`,
+            operation: failurePolicy === 'FAIL_SOURCE' ? 'FAIL_QUEST' : 'INVALIDATE_QUEST',
+            entityType: 'QUEST', entityId: sourceId, effectiveEpoch: epoch, preconditions: [],
+            payload: { questId: sourceId, reason },
+            source: { type: 'SIMULATION', id: 'DependencyImpactService' },
+          });
+          break;
+        }
       }
     }
 

@@ -1,6 +1,6 @@
 import { StateChangeProposal, CommitResult } from '../recorder/changeSchemas';
-import { DependencyImpactService } from '../dependency/dependencyImpactService';
-import { DependencyTargetRef, CausalPropagationContext } from '../dependency/dependencyTypes';
+import { CausalPropagationContext } from '../dependency/dependencyTypes';
+import { WorldReactionService } from './worldReactionService';
 import { createStateChangeProposal } from '../proposal/proposalFactory';
 import { proposalPipeline } from '../proposal/proposalPipeline';
 
@@ -58,12 +58,7 @@ export class WorldMutationCoordinator {
     let propagationWarnings: string[] = [];
 
     if (commitResult.success && commitResult.changedTargets && commitResult.changedTargets.length > 0) {
-      const propRes = await DependencyImpactService.processCommittedChanges({
-        worldId,
-        epoch: commitResult.epoch,
-        changedTargets: commitResult.changedTargets as DependencyTargetRef[],
-        context,
-      });
+      const propRes = await WorldReactionService.processCommittedChanges({ worldId, commitResult, context });
 
       evaluatedDependencies = propRes.evaluatedDependencies;
       invalidatedDependencies = propRes.invalidatedDependencies;
