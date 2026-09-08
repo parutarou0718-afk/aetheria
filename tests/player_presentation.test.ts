@@ -55,4 +55,21 @@ describe('PlayerPresentationService', () => {
     expect(result).toEqual(expect.objectContaining({ phase: 'NEEDS_GENESIS', aiAvailable: false }));
     expect('player' in result).toBe(false);
   });
+
+  it.each([
+    { status: 'ALIVE', presence: 'AT_LOCATION', expected: 'AVAILABLE' },
+    { status: 'DEAD', presence: 'DEAD', expected: 'DEAD' },
+    { status: 'INCAPACITATED', presence: 'AT_LOCATION', expected: 'INCAPACITATED' },
+    { status: 'MISSING', presence: 'MISSING', expected: 'MISSING' },
+    { status: 'ALIVE', presence: 'IN_TRANSIT', expected: 'IN_TRANSIT' },
+  ])('uses the shared capability state for $expected', async ({ status, presence, expected }) => {
+    const player = globalWorld.characters.get(actorId)!;
+    setRecorderWriteContext(true);
+    try { player.status = status as typeof player.status; player.presence_state = presence as typeof player.presence_state; }
+    finally { setRecorderWriteContext(false); }
+
+    const result = await new PlayerPresentationService().getBootstrap({ worldId, actorId, aiAvailable: true });
+    if (result.phase !== 'READY') throw new Error('Expected a ready player view.');
+    expect(result.player.capability.actionState).toBe(expected);
+  });
 });

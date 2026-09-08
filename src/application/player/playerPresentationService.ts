@@ -4,6 +4,7 @@ import { QuestRepository } from '../../engine/quest/questRepository';
 import { toQuestPublicView } from '../../engine/quest/questPublicView';
 import { InteractionRepository } from '../../engine/context/interactionRepository';
 import { ObserverKnowledgeService, type KnowledgeEntry } from '../../engine/history/observerKnowledgeService';
+import { CapabilitySnapshotService } from '../../engine/capability/capabilitySnapshot';
 import type { Character, Location } from '../../types';
 import type {
   PlayerBootstrapView, PlayerCharacterView, PlayerConversationTurn, PlayerKnowledgeEntry,
@@ -50,9 +51,10 @@ export class PlayerPresentationService {
   }
 
   private projectPlayer(character: Character): PlayerCharacterView {
+    const capability = CapabilitySnapshotService.fromCharacter(character);
     return { id: character.id, name: character.name, title: character.title, species: character.species, status: character.status, presenceState: character.presence_state ?? 'AT_LOCATION', currentLocationId: character.location_id,
       attributes: { hp: character.attributes.hp, maxHp: character.attributes.max_hp, mp: character.attributes.mp, maxMp: character.attributes.max_mp }, skills: { ...character.skills }, resources: { gold: character.resources.gold, reputation: character.resources.reputation },
-      inventory: character.inventory.map((item) => ({ itemId: item.item_id, name: item.name, quantity: item.quantity, type: item.type })), currentAction: { type: character.current_action.type, description: character.current_action.description, estimatedEndEpoch: character.current_action.estimated_end_epoch }, capability: { actionState: character.status === 'ALIVE' && (character.presence_state ?? (character.location_id ? 'AT_LOCATION' : 'MISSING')) === 'AT_LOCATION' && character.location_id ? 'AVAILABLE' : character.status } };
+      inventory: character.inventory.map((item) => ({ itemId: item.item_id, name: item.name, quantity: item.quantity, type: item.type })), currentAction: { type: character.current_action.type, description: character.current_action.description, estimatedEndEpoch: character.current_action.estimated_end_epoch }, capability: { actionState: capability.actionState } };
   }
   private projectLocation(location: Location): PlayerLocationView { return { id: location.id, name: location.name, description: location.description, status: location.status ?? 'ACTIVE', visibleFeatures: location.features.filter((feature) => !feature.hidden_truth_id).map(({ name, description, state }) => ({ name, description, state })) }; }
   private projectNpc(character: Character): PlayerNpcView { return { id: character.id, name: character.name, title: character.title, species: character.species, status: character.status, presenceState: character.presence_state ?? 'AT_LOCATION', observableActivityType: character.current_action.type }; }

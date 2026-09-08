@@ -167,17 +167,32 @@ export function registerCharacterActionRoutes(app: express.Express): void {
   });
 }
 
-async function startServer() {
+export interface CreateAppOptions {
+  bootstrap?: boolean;
+  includeFrontend?: boolean;
+}
+
+function isDeveloperRoute(pathname: string): boolean {
+  return [
+    '/api/v1/world/', '/api/v1/characters', '/api/v1/locations', '/api/v1/organizations',
+    '/api/v1/seeds', '/api/v1/events', '/api/v1/truths', '/api/v1/quests', '/api/v1/admin',
+    '/api/v1/persistence', '/api/v1/causality', '/api/v1/timeline', '/api/v1/worlds', '/api/v1/dm/action',
+  ].some((prefix) => pathname === prefix || pathname.startsWith(prefix));
+}
+
+/** Builds the actual HTTP surface; tests use this to exercise the same gate as production. */
+export async function createApp(options: CreateAppOptions = {}): Promise<express.Express> {
   const app = express();
-  const PORT = 3000;
 
   app.use(express.json());
 
   // === INITIALIZE PERSISTENCE LAYER ===
-  try {
-    await WorldBootstrap.bootstrap('world-snapshot-001');
-  } catch (dbErr) {
-    console.error('Failed to initialize SQLite persistent world engine:', dbErr);
+  if (options.bootstrap) {
+    try {
+      await WorldBootstrap.bootstrap('world-snapshot-001');
+    } catch (dbErr) {
+      console.error('Failed to initialize SQLite persistent world engine:', dbErr);
+    }
   }
 
   // === REST API ENDPOINTS ===
@@ -185,6 +200,17 @@ async function startServer() {
   // 0. API & LLM Provider Configuration
   registerConfigRoutes(app);
   registerPlayerRoutes(app);
+
+  // The normal browser only receives the player surface. Legacy inspection and
+  // mutation routes stay useful for local development, but are never registered
+  // as reachable endpoints unless the server-owned gate explicitly enables them.
+  app.use((req, res, next) => {
+    if (process.env.AETHERIA_DEV_INSPECTOR !== 'true' && isDeveloperRoute(req.path)) {
+      res.status(404).json({ status: 'error', code: 'NOT_FOUND', error: 'Not found.' });
+      return;
+    }
+    next();
+  });
 
   // 1. Get World Snapshot & Overview
   app.get('/api/v1/world/snapshot', (req, res) => {
@@ -560,6 +586,7 @@ async function startServer() {
   });
 
   // === VITE MIDDLEWARE SETUP ===
+  if (!options.includeFrontend) return app;
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -574,6 +601,12 @@ async function startServer() {
     });
   }
 
+  return app;
+}
+
+async function startServer() {
+  const PORT = 3000;
+  const app = await createApp({ bootstrap: true, includeFrontend: true });
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
