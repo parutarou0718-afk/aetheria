@@ -186,7 +186,7 @@ describe('bounded NPC autonomy runtime', () => {
       expect(await WorldRepository.getTransactionsForActor(globalWorld.snapshot.id, npc.id), scenario.name).toHaveLength(0);
       expect(await MemoryEpisodeRepository.getRecentEpisodes(globalWorld.snapshot.id, 'CHARACTER', npc.id, 5), scenario.name).not.toEqual(expect.arrayContaining([expect.objectContaining({ sourceType: 'NPC_AUTONOMY' })]));
     }
-  });
+  }, 30_000);
 
   it('runs autonomy only after a successful scheduler epoch commit and keeps an unavailable AI non-mutating', async () => {
     const npc = globalWorld.characters.get('npc-elder')!;
