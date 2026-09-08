@@ -2,14 +2,11 @@ export type RuntimeHealthStatus = 'READY' | 'DEGRADED' | 'NOT_READY';
 
 /** Safe operational state only; it never exposes world content or configuration. */
 export class RuntimeHealthService {
-  // A process only starts serving after createApp initialized persistence. The
-  // optimistic default keeps pure application-route tests independent of a
-  // process bootstrap, while explicit fault paths always fail closed.
-  private databaseInitialized = true;
-  private databaseIntegrity = true;
-  private durabilityHealthy = true;
+  private databaseInitialized = false;
+  private databaseIntegrity = false;
+  private durabilityHealthy = false;
   private cacheSynchronized = true;
-  private bootstrapHealthy = true;
+  private bootstrapHealthy = false;
 
   markDatabaseHealthy(): void { this.databaseInitialized = true; this.databaseIntegrity = true; this.durabilityHealthy = true; }
   markBootstrapHealthy(): void { this.bootstrapHealthy = true; }

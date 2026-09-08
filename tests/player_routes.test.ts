@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { registerPlayerRoutes } from '../src/server/routes/playerRoutes';
 import { bootstrapWithDefaultWorld } from './helpers/worldFixture';
 import { InteractionRepository } from '../src/engine/context/interactionRepository';
+import { runtimeHealth } from '../src/engine/runtime/runtimeHealthService';
 
 let server: Server | undefined;
 let baseUrl = '';
@@ -12,6 +13,9 @@ let worldId = '';
 beforeEach(async () => {
   worldId = `player-routes-${crypto.randomUUID()}`;
   await bootstrapWithDefaultWorld(worldId);
+  runtimeHealth.markDatabaseHealthy();
+  runtimeHealth.markBootstrapHealthy();
+  runtimeHealth.markCacheSynchronized();
   const app = express();
   app.use(express.json());
   registerPlayerRoutes(app);
