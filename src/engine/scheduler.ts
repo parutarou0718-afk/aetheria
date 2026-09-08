@@ -62,6 +62,7 @@ export class SchedulerEngine {
 
     const wokenEntities: string[] = [];
     const autonomyCandidates: NpcAutonomyCandidate[] = [];
+    const allocatedWakeEntityIds = new Set<string>();
     let catchupCount = 0;
 
     // 1. Resolve and Allocate Wake Signals
@@ -97,6 +98,7 @@ export class SchedulerEngine {
             source: { type: 'SCHEDULER' },
           });
           wokenEntities.push(char.name);
+          allocatedWakeEntityIds.add(char.id);
           if (char.type === 'NPC') autonomyCandidates.push({ npcId: char.id, triggerReason: signal.reason, weight: signal.weight, signalEpoch: signal.epoch });
         }
       } else {
@@ -109,7 +111,7 @@ export class SchedulerEngine {
     if (pc) {
       globalWorld.characters.forEach((char) => {
         if (char.id !== pc.id && char.location_id === pc.location_id && char.status !== 'DEAD') {
-          if (char.frozen) {
+          if (char.frozen && !allocatedWakeEntityIds.has(char.id)) {
             const elapsed = targetEpoch - char.last_simulated_epoch;
             if (elapsed > 1) {
               this.buildCatchUpProposals(char, elapsed, targetEpoch, proposals);

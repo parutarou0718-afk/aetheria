@@ -74,7 +74,7 @@ export class ContextAssembler {
       packet.narratorPrivate = { hiddenTruths: ranked.map(toNarratorHiddenTruthView) };
     }
     if (request.purpose === 'NPC_AUTONOMOUS_ACTION' && npc) {
-      packet.autonomy = { triggerReason: request.userInput, allowedActions: ['WAIT', 'SET_ACTIVITY', 'MOVE'], moveOptions: await NpcMobilityService.getOptions(request.worldId, npc) };
+      packet.autonomy = { triggerReason: request.userInput, allowedActions: ['WAIT', 'SET_ACTIVITY', 'MOVE'], moveOptions: (await NpcMobilityService.getOptions(request.worldId, npc)).map(({ locationId, name }) => ({ locationId, name })) };
     }
     packet.diagnostics.estimatedTokens = ContextBudgeter.estimateTokens(packet);
     return ContextBudgeter.apply(packet);

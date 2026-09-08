@@ -1,7 +1,6 @@
 import { globalWorld } from '../worldState';
 import { WorldRepository } from '../world/worldRepository';
 import { ContextAssembler } from '../context/contextAssembler';
-import { NpcMobilityService } from './npcMobilityService';
 import { NpcAutonomyEligibility } from './npcAutonomyEligibility';
 import { NpcAutonomyRunRepository } from './npcAutonomyRunRepository';
 import { NpcAutonomyDecisionService } from './npcAutonomyDecisionService';
@@ -30,22 +29,24 @@ export class NpcAutonomyCoordinator {
     const claimed = await NpcAutonomyRunRepository.claimRun({ worldId: input.worldId, npcId: input.npcId, epoch: input.epoch, triggerReason: input.triggerReason });
     if (!claimed) return { ...input, status: 'SKIPPED' };
     const npc = await WorldRepository.getCharacter(input.worldId, input.npcId);
-    if (!NpcAutonomyEligibility.isEligible(npc, input.epoch) || !this.decisions.isAvailable(input.worldId)) { await NpcAutonomyRunRepository.updateRun(claimed.id, 'SKIPPED'); return { ...input, status: 'SKIPPED' }; }
+    if (!NpcAutonomyEligibility.isEligible(npc, input.epoch) || !this.decisions.isAvailable(input.worldId)) { await this.safeRunUpdate(claimed.id, 'SKIPPED'); return { ...input, status: 'SKIPPED' }; }
     try {
       const packet = await ContextAssembler.assemble({ worldId: input.worldId, userId: 'SYSTEM_USER', sessionId: `autonomy:${input.epoch}`, actorId: input.npcId, npcId: input.npcId, purpose: 'NPC_AUTONOMOUS_ACTION', currentEpoch: input.epoch, userInput: input.triggerReason });
-      packet.autonomy = { triggerReason: input.triggerReason, allowedActions: ['WAIT', 'SET_ACTIVITY', 'MOVE'], moveOptions: await NpcMobilityService.getOptions(input.worldId, npc!) };
       globalWorld.totalLLMCalls += 1; globalWorld.llmCallsThisEpoch += 1;
       const intent = await this.decisions.decide(input.worldId, packet);
       await NpcAutonomyRunRepository.updateRun(claimed.id, 'DECIDED', { intentAction: intent.action, intentSummary: intent.reason });
       const freshNpc = await WorldRepository.getCharacter(input.worldId, input.npcId);
-      const validity = await NpcAutonomyIntentValidator.validate({ worldId: input.worldId, npc: freshNpc, epoch: input.epoch, intent });
-      if (!validity.valid) { await NpcAutonomyRunRepository.updateRun(claimed.id, 'REJECTED', { errorCode: validity.code }); return { ...input, status: 'REJECTED', intentAction: intent.action, rejectionCodes: [validity.code ?? 'NPC_INTENT_INVALID'] }; }
-      const build = await NpcAutonomyActionBuilder.build({ worldId: input.worldId, npc: freshNpc!, epoch: input.epoch, runId: claimed.id, intent });
+      const validity = await NpcAutonomyIntentValidator.validate({ worldId: input.worldId, npc: freshNpc, epoch: input.epoch, intent, expectedOriginLocationId: npc?.location_id });
+      if (!validity.valid) { await this.safeRunUpdate(claimed.id, 'REJECTED', { errorCode: validity.code }); return { ...input, status: 'REJECTED', intentAction: intent.action, rejectionCodes: [validity.code ?? 'NPC_INTENT_INVALID'] }; }
+      const build = await NpcAutonomyActionBuilder.build({ worldId: input.worldId, npc: freshNpc!, epoch: input.epoch, runId: claimed.id, intent, mobilityOption: validity.mobilityOption });
       const result = await this.pipeline.processAndCommit({ worldId: input.worldId, proposals: build.proposals });
-      if (!result.success || !result.commitResult) { const codes = result.rejected.map(rejection => rejection.code); await NpcAutonomyRunRepository.updateRun(claimed.id, 'REJECTED', { errorCode: codes.join(','), proposalIds: build.proposals.map(proposal => proposal.id) }); return { ...input, status: 'REJECTED', intentAction: build.intentAction, rejectionCodes: codes }; }
-      await NpcAutonomyRunRepository.updateRun(claimed.id, 'COMMITTED', { proposalIds: build.proposals.map(proposal => proposal.id) });
-      await WorldReactionService.processCommittedChanges({ worldId: input.worldId, commitResult: result.commitResult });
+      if (!result.success || !result.commitResult) { const codes = result.rejected.map(rejection => rejection.code); await this.safeRunUpdate(claimed.id, 'REJECTED', { errorCode: codes.join(','), proposalIds: build.proposals.map(proposal => proposal.id) }); return { ...input, status: 'REJECTED', intentAction: build.intentAction, rejectionCodes: codes }; }
+      // This is the irreversible authoritative boundary. Nothing below it may
+      // reclassify a successfully committed world action as FAILED.
+      await this.safeRunUpdate(claimed.id, 'COMMITTED', { proposalIds: build.proposals.map(proposal => proposal.id) });
+      try { await WorldReactionService.processCommittedChanges({ worldId: input.worldId, commitResult: result.commitResult }); } catch { /* reaction is best-effort after commit */ }
       return { ...input, status: 'COMMITTED', intentAction: build.intentAction, proposalIds: build.proposals.map(proposal => proposal.id) };
-    } catch (error) { await NpcAutonomyRunRepository.updateRun(claimed.id, 'FAILED', { errorCode: error instanceof Error ? error.message.slice(0, 120) : 'NPC_AUTONOMY_FAILED' }); return { ...input, status: 'FAILED' }; }
+    } catch (error) { await this.safeRunUpdate(claimed.id, 'FAILED', { errorCode: error instanceof Error ? error.message.slice(0, 120) : 'NPC_AUTONOMY_FAILED' }); return { ...input, status: 'FAILED' }; }
   }
+  private async safeRunUpdate(id: string, status: import('./npcAutonomyTypes').NpcAutonomyRunStatus, data?: Parameters<typeof NpcAutonomyRunRepository.updateRun>[2]): Promise<void> { try { await NpcAutonomyRunRepository.updateRun(id, status, data); } catch { /* orchestration sidecar must never alter authoritative outcome */ } }
 }

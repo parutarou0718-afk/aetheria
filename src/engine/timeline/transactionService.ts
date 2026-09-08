@@ -2,7 +2,7 @@ import { WorldRepository } from '../world/worldRepository';
 import { WorldMutationCoordinator } from '../world/worldMutationCoordinator';
 import { StateChangeProposal } from '../recorder/changeSchemas';
 import { EventType, WorldTransaction, ScheduledCheckpoint } from '../../types';
-import { TravelPlanRequest, TravelPlanResult } from './timelineTypes';
+import { TravelPlanRequest, TravelPlanResult, TravelRouteConstraint, RoutePathResult } from './timelineTypes';
 import { TransactionValidator } from './transactionValidator';
 import { RoutePlanner } from './routePlanner';
 import { TransactionStateMachine } from './transactionStateMachine';
@@ -30,12 +30,9 @@ export class TransactionService {
     const originId = actor.location_id!;
 
     // 3. Route Calculation
-    const route = await RoutePlanner.findRoute(
-      req.worldId,
-      originId,
-      req.destinationLocationId,
-      req.speedMultiplier ?? 1.0
-    );
+    const route = req.routeConstraint
+      ? await this.resolveConstrainedRoute(req.worldId, originId, req.destinationLocationId, req.routeConstraint, req.speedMultiplier ?? 1.0)
+      : await RoutePlanner.findRoute(req.worldId, originId, req.destinationLocationId, req.speedMultiplier ?? 1.0);
 
     const txId = `tx-travel-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     const expectedEndEpoch = req.startEpoch + route.totalEpochs;
@@ -185,6 +182,22 @@ export class TransactionService {
       totalDistance: route.totalDistance,
       totalEpochs: route.totalEpochs,
     };
+  }
+
+  private static async resolveConstrainedRoute(worldId: string, originId: string, destinationId: string, constraint: TravelRouteConstraint, speedMultiplier: number): Promise<RoutePathResult> {
+    if (constraint.kind !== 'DIRECT_EDGE' || constraint.originLocationId !== originId || constraint.destinationLocationId !== destinationId) {
+      throw new TimelineError('INVALID_ROUTE', 'Trusted direct route constraint no longer matches the travel request.');
+    }
+    const edge = await WorldRepository.getLocationEdge(worldId, constraint.edgeId);
+    if (!edge || edge.from_location_id !== originId || edge.to_location_id !== destinationId || (edge.status && edge.status !== 'OPEN')) {
+      throw new TimelineError('INVALID_ROUTE', 'The validated direct travel edge is no longer open.');
+    }
+    const destination = await WorldRepository.getLocation(worldId, destinationId);
+    if (!destination || ['BLOCKED', 'DESTROYED', 'INACCESSIBLE'].includes(destination.status ?? 'ACTIVE')) {
+      throw new TimelineError('DESTINATION_BLOCKED', 'The validated direct travel destination is no longer accessible.');
+    }
+    const totalEpochs = Math.max(1, Math.ceil((edge.travel_time_epochs || 1) / speedMultiplier));
+    return { path: [originId, destinationId], edges: [edge], totalDistance: edge.distance ?? 1, totalCost: edge.travel_cost ?? 1, totalEpochs };
   }
 
   public static async planTravel(req: TravelPlanRequest): Promise<TravelPlanResult> {

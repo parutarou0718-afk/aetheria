@@ -12,7 +12,7 @@ export class NpcMobilityService {
       if (edge.status && edge.status !== 'OPEN' || !known.has(edge.to_location_id)) continue;
       const destination = await WorldRepository.getLocation(worldId, edge.to_location_id);
       if (!destination || ['BLOCKED', 'DESTROYED', 'INACCESSIBLE'].includes(destination.status ?? 'ACTIVE')) continue;
-      options.push({ locationId: destination.id, name: destination.name });
+      options.push({ edgeId: edge.id, locationId: destination.id, name: destination.name });
     }
     return options.sort((a, b) => a.locationId.localeCompare(b.locationId)).slice(0, 24);
   }

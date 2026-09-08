@@ -3,16 +3,17 @@ import type { ProposalV2 } from '../proposal/proposalSchema';
 import { TransactionService } from '../timeline/transactionService';
 import type { Character } from '../../types';
 import type { NpcAutonomousIntent } from './npcAutonomyIntent';
-import type { NpcAutonomyBuild } from './npcAutonomyTypes';
+import type { NpcAutonomyBuild, NpcMobilityOption } from './npcAutonomyTypes';
 
 const durations: Record<string, number> = { WAIT: 1, WORK: 2, INVESTIGATE: 2, PATROL: 2, GUARD: 2 };
 const actionType: Record<string, string> = { WAIT: 'WAIT', WORK: 'WORK', INVESTIGATE: 'WORK', PATROL: 'WORK', GUARD: 'WORK' };
 
 export class NpcAutonomyActionBuilder {
-  static async build(input: { worldId: string; npc: Character; epoch: number; runId: string; intent: NpcAutonomousIntent }): Promise<NpcAutonomyBuild> {
+  static async build(input: { worldId: string; npc: Character; epoch: number; runId: string; intent: NpcAutonomousIntent; mobilityOption?: NpcMobilityOption }): Promise<NpcAutonomyBuild> {
     const causalBasis = [{ type: 'ENTITY_STATE' as const, id: input.npc.id, entityType: 'CHARACTER', description: 'NPC autonomous action selected from current goal and observed context.' }];
     if (input.intent.action === 'MOVE') {
-      const plan = await TransactionService.buildTravelPlanProposals({ worldId: input.worldId, actorId: input.npc.id, destinationLocationId: input.intent.destinationLocationId, startEpoch: input.epoch });
+      if (!input.mobilityOption || input.mobilityOption.locationId !== input.intent.destinationLocationId || !input.npc.location_id) throw new Error('NPC_DESTINATION_UNAVAILABLE');
+      const plan = await TransactionService.buildTravelPlanProposals({ worldId: input.worldId, actorId: input.npc.id, destinationLocationId: input.intent.destinationLocationId, startEpoch: input.epoch, routeConstraint: { kind: 'DIRECT_EDGE', edgeId: input.mobilityOption.edgeId, originLocationId: input.npc.location_id, destinationLocationId: input.intent.destinationLocationId } });
       const destination = input.intent.destinationLocationId;
       const memory = this.memoryProposal(input, `I began traveling toward ${destination}.`, [input.npc.id, input.npc.location_id ?? '', destination]);
       return { intentAction: 'MOVE', summary: `Move toward ${destination}.`, proposals: [...plan.proposals.map(proposal => createStateChangeProposal({ ...proposal, reason: 'Execute approved NPC autonomous travel transaction.', causalBasis: [{ type: 'SYSTEM_EVENT', description: 'Trusted NPC autonomy travel initiation.' }], authorityLevel: 'SYSTEM', confidence: 1 })), memory] };

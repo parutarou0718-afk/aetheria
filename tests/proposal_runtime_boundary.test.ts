@@ -121,6 +121,7 @@ describe('proposal runtime boundary', () => {
     expect(validator).not.toMatch(/aiService|llmClient|recorder/);
     expect(builder).not.toMatch(/WorldRepository\.save|recorder\s*\.\s*commit|globalWorld\s*\./);
     expect(coordinator).not.toMatch(/WorldRepository\.save|recorder\s*\.\s*commit|setRecorderWriteContext/);
+    expect(coordinator).not.toMatch(/packet\.autonomy\s*=/);
     expect(decision).toMatch(/NPC_AUTONOMOUS_ACTION/);
     expect(builder).toMatch(/actorId:\s*input\.npc\.id/);
   });
