@@ -32,4 +32,19 @@ describe('context assembly isolation', () => {
     expect(JSON.stringify(packet.observerKnowledge)).not.toContain('guard is dead');
     expect((packet.narratorPrivate as { hiddenTruths: unknown[] }).hiddenTruths).toHaveLength(1);
   });
+
+  it('keeps newest current-session turns while reserving space for relevant older DM continuity', async () => {
+    const worldId = globalWorld.snapshot.id;
+    const conversationId = 'DM:pc-player';
+    await InteractionRepository.appendTurn({ id: `old-relevant-${crypto.randomUUID()}`, worldId, sessionId: 'old-session', conversationType: 'DM', conversationId, speakerType: 'PLAYER', speakerId: 'pc-player', content: 'The merchant betrayed us at the bridge.', epoch: 2, outcomeStatus: 'SUCCESS', createdAt: '2020-01-01T00:00:00.000Z' });
+    await InteractionRepository.appendTurn({ id: `old-unrelated-${crypto.randomUUID()}`, worldId, sessionId: 'old-session', conversationType: 'DM', conversationId, speakerType: 'PLAYER', speakerId: 'pc-player', content: 'The unrelated weather was calm.', epoch: 3, outcomeStatus: 'SUCCESS', createdAt: '2020-01-01T00:01:00.000Z' });
+    for (let index = 0; index < 14; index++) await InteractionRepository.appendTurn({ id: `current-${crypto.randomUUID()}`, worldId, sessionId: 'current-session', conversationType: 'DM', conversationId, speakerType: 'PLAYER', speakerId: 'pc-player', content: `irrelevant current turn ${index}`, epoch: 20 + index, outcomeStatus: 'SUCCESS', createdAt: `2020-01-02T00:00:${String(index).padStart(2, '0')}.000Z` });
+
+    const packet = await ContextAssembler.assemble({ worldId, userId: 'u', sessionId: 'current-session', actorId: 'pc-player', purpose: 'DM_ACTION', currentEpoch: 1, userInput: 'What happened with that merchant?' });
+    const content = packet.recentInteractions?.map(turn => turn.content) ?? [];
+    expect(content).toContain('The merchant betrayed us at the bridge.');
+    expect(content).toContain('irrelevant current turn 13');
+    expect(content).not.toContain('The unrelated weather was calm.');
+    expect(content.length).toBeLessThanOrEqual(12);
+  });
 });

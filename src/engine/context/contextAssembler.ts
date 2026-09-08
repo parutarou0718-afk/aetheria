@@ -40,10 +40,13 @@ export class ContextAssembler {
     }
     const conversationId = request.purpose === 'NPC_DIALOGUE' && request.npcId ? `NPC:${request.npcId}:${request.actorId}` : `DM:${request.actorId}`;
     if (policy.includeRecentInteractions) {
-      const recent = await InteractionRepository.listRecentSessionTurns(request.worldId, conversationId, request.sessionId, policy.limits.recentTurns);
-      const remaining = Math.max(0, policy.limits.recentTurns - recent.length);
-      const older = remaining ? await InteractionRepository.listRelevantOlderTurns(request.worldId, conversationId, request.sessionId, request.userInput, remaining) : [];
-      packet.recentInteractions = [...older, ...recent].map(toContextInteractionTurn);
+      const limit = policy.limits.recentTurns;
+      const olderQuota = Math.min(3, limit);
+      const older = await InteractionRepository.listRelevantOlderTurns(request.worldId, conversationId, request.sessionId, request.userInput, olderQuota);
+      const currentQuota = limit - older.length;
+      const recent = await InteractionRepository.listRecentSessionTurns(request.worldId, conversationId, request.sessionId, limit);
+      // Current-session continuity remains primary: old relevant turns displace only its oldest entries.
+      packet.recentInteractions = [...older, ...recent.slice(-currentQuota)].map(toContextInteractionTurn);
     }
     if (policy.includeEpisodicMemory) packet.relevantMemories = (await MemoryRetrievalService.retrieve({ worldId: request.worldId, observerType: policy.observerScope === 'NPC' ? 'CHARACTER' : 'PLAYER', observerId: policy.observerScope === 'NPC' ? request.npcId || request.actorId : request.actorId, userInput: request.userInput, locationId: sceneOwner?.location_id, limit: policy.limits.memories })).map(toContextMemoryEpisode);
     if (policy.observerScope === 'PLAYER' || policy.observerScope === 'NPC') {
