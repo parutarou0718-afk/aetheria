@@ -5,19 +5,33 @@ import { getContextPolicy } from './contextPolicy';
 import type { ContextPacket, ContextRequest } from './contextTypes';
 import { InteractionRepository } from './interactionRepository';
 import { MemoryRetrievalService } from './memoryRetrievalService';
+import { ContextBudgeter } from './contextBudgeter';
+import { DefaultWorldRuleRepository } from '../constraints/rules/worldRuleRepository';
+import { toContextLocationView, toContextRuleView, toDmCharacterView, toNarratorHiddenTruthView, toNpcObservedCharacterView, toNpcSelfView } from './contextViews';
 
 export class ContextAssembler {
   static async assemble(request: ContextRequest): Promise<ContextPacket> {
     const policy = getContextPolicy(request.purpose);
     const snapshot = await WorldRepository.getWorldSnapshot(request.worldId);
     if (!snapshot) throw new Error(`World [${request.worldId}] not found.`);
+    const epoch = snapshot.epoch;
     const actor = await WorldRepository.getCharacter(request.worldId, request.actorId);
-    const location = actor?.location_id ? await WorldRepository.getLocation(request.worldId, actor.location_id) : null;
-    const packet: ContextPacket = { version: 1, world: { id: snapshot.id, name: snapshot.world_name, epoch: request.currentEpoch }, diagnostics: { estimatedTokens: 0, budgetLimit: policy.maxEstimatedTokens, includedCounts: {}, droppedCounts: {} } };
-    if (policy.includeWorldProfile) packet.world.profile = await WorldRepository.getWorldProfile(request.worldId);
+    const npc = policy.observerScope === 'NPC' && request.npcId ? await WorldRepository.getCharacter(request.worldId, request.npcId) : null;
+    const sceneOwner = npc ?? actor;
+    const location = sceneOwner?.location_id ? await WorldRepository.getLocation(request.worldId, sceneOwner.location_id) : null;
+    const packet: ContextPacket = { version: 1, world: { id: snapshot.id, name: snapshot.world_name, epoch }, diagnostics: { estimatedTokens: 0, budgetLimit: policy.maxEstimatedTokens, includedCounts: {}, droppedCounts: {} } };
+    if (policy.includeWorldProfile) {
+      const profile = await WorldRepository.getWorldProfile(request.worldId);
+      packet.world.profile = profile ? { displayName: profile.display_name, description: profile.world_description, genre: profile.genre, cosmology: profile.cosmology, narrationStyle: profile.narration_style } : undefined;
+    }
     if (policy.includeWorldAxioms) packet.world.axioms = (await WorldRepository.getWorldAxioms(request.worldId)).map(axiom => ({ statement: axiom.statement, immutable: axiom.immutable }));
-    if (policy.includeActorPrivateState && actor) packet.actor = { id: actor.id, name: actor.name, title: actor.title, status: actor.status, locationId: actor.location_id, attributes: actor.attributes, resources: actor.resources, inventory: actor.inventory, currentAction: actor.current_action };
-    if (policy.includeScene) packet.scene = { location: location ? { id: location.id, name: location.name, description: location.description, status: location.status } : undefined, characters: [] };
+    if (policy.includeWorldRules) packet.world.rules = (await new DefaultWorldRuleRepository().getEnabledRules(request.worldId)).map(toContextRuleView);
+    if (actor && policy.includeActorPrivateState) packet.actor = toDmCharacterView(actor);
+    if (npc) packet.actor = toNpcSelfView(npc, request.actorId);
+    if (policy.includeScene) {
+      const present = location ? (await WorldRepository.getAllCharacters(request.worldId)).filter(character => character.location_id === location.id) : [];
+      packet.scene = { location: location ? toContextLocationView(location) : undefined, characters: present.map(character => toNpcObservedCharacterView(character)) };
+    }
     if (policy.includeQuests) {
       const quests = policy.observerScope === 'NPC' && request.npcId
         ? [...await QuestRepository.listAvailableByGiver(request.worldId, request.npcId), ...(await QuestRepository.listActiveByAssignee(request.worldId, request.actorId)).filter(q => q.giver_character_id === request.npcId)]
@@ -26,12 +40,26 @@ export class ContextAssembler {
     }
     const conversationId = request.purpose === 'NPC_DIALOGUE' && request.npcId ? `NPC:${request.npcId}:${request.actorId}` : `DM:${request.actorId}`;
     if (policy.includeRecentInteractions) packet.recentInteractions = await InteractionRepository.listRecentTurns(request.worldId, conversationId, policy.limits.recentTurns);
-    if (policy.includeEpisodicMemory) packet.relevantMemories = await MemoryRetrievalService.retrieve({ worldId: request.worldId, observerType: policy.observerScope === 'NPC' ? 'CHARACTER' : 'PLAYER', observerId: policy.observerScope === 'NPC' ? request.npcId || request.actorId : request.actorId, userInput: request.userInput, locationId: actor?.location_id, limit: policy.limits.memories });
+    if (policy.includeEpisodicMemory) packet.relevantMemories = await MemoryRetrievalService.retrieve({ worldId: request.worldId, observerType: policy.observerScope === 'NPC' ? 'CHARACTER' : 'PLAYER', observerId: policy.observerScope === 'NPC' ? request.npcId || request.actorId : request.actorId, userInput: request.userInput, locationId: sceneOwner?.location_id, limit: policy.limits.memories });
     if (policy.observerScope === 'PLAYER' || policy.observerScope === 'NPC') {
-      const knowledge = await new ObserverKnowledgeService().getKnowledgeSnapshot({ worldId: request.worldId, observerType: policy.observerScope === 'NPC' ? 'CHARACTER' : 'PLAYER', observerId: policy.observerScope === 'NPC' ? request.npcId || request.actorId : request.actorId, atEpoch: request.currentEpoch });
-      packet.observerKnowledge = knowledge;
+      const knowledge = await new ObserverKnowledgeService().getKnowledgeSnapshot({ worldId: request.worldId, observerType: policy.observerScope === 'NPC' ? 'CHARACTER' : 'PLAYER', observerId: policy.observerScope === 'NPC' ? request.npcId || request.actorId : request.actorId, atEpoch: epoch });
+      packet.observerKnowledge = {
+        confirmedFacts: knowledge.confirmedFacts.slice(0, policy.limits.knowledgePerBucket),
+        claims: knowledge.claims.slice(0, policy.limits.knowledgePerBucket),
+        rumors: knowledge.rumors.slice(0, policy.limits.knowledgePerBucket),
+        inferences: knowledge.inferences.slice(0, policy.limits.knowledgePerBucket),
+      };
     }
-    packet.diagnostics.estimatedTokens = Math.ceil(JSON.stringify(packet).length / 4);
-    return packet;
+    if (policy.includeWorldEvents) packet.relevantEvents = (await WorldRepository.getRecentEvents(request.worldId, policy.limits.events)).map(event => ({ id: event.id, type: event.type, description: event.description, epoch: event.epoch, locationId: event.location_id, involvedEntityIds: event.involved_entity_ids }));
+    if (policy.hiddenTruthAccess !== 'NONE') {
+      const terms = request.userInput.toLowerCase().split(/\W+/).filter(Boolean);
+      const relevantIds = new Set([request.actorId, location?.id, request.npcId].filter(Boolean));
+      const truths = await WorldRepository.getAllHiddenTruths(request.worldId);
+      const ranked = truths.filter(truth => policy.hiddenTruthAccess === 'RELEVANT_AUTHORING' || truth.revealed_to_ids.includes(request.actorId) || relevantIds.has(truth.true_owner_id) || terms.some(term => term.length > 2 && `${truth.title} ${truth.true_nature} ${truth.true_goal ?? ''}`.toLowerCase().includes(term)))
+        .sort((a, b) => a.id.localeCompare(b.id)).slice(0, policy.limits.hiddenTruths);
+      packet.narratorPrivate = { hiddenTruths: ranked.map(toNarratorHiddenTruthView) };
+    }
+    packet.diagnostics.estimatedTokens = ContextBudgeter.estimateTokens(packet);
+    return ContextBudgeter.apply(packet);
   }
 }

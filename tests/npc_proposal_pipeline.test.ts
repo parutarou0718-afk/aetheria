@@ -10,6 +10,7 @@ import { WorldRepository } from '../src/engine/world/worldRepository';
 import { WorldCacheLoader } from '../src/engine/world/worldCacheLoader';
 import { bootstrapWithDefaultWorld } from './helpers/worldFixture';
 import { QuestRepository } from '../src/engine/quest/questRepository';
+import { MemoryEpisodeRepository } from '../src/engine/context/memoryEpisodeRepository';
 
 function requestContext() {
   return {
@@ -40,6 +41,9 @@ describe('NPC proposal authority', () => {
         expect.objectContaining({ operation: 'CREATE_OBSERVED_HISTORY', payload: expect.objectContaining({ factPath: 'dialogue.statement', metadata: expect.objectContaining({ epistemic_status: 'CLAIM' }) }) }),
       ]),
     }));
+    expect(await MemoryEpisodeRepository.getRecentEpisodes(globalWorld.snapshot.id, 'CHARACTER', 'npc-elder', 10)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ episodeType: 'DIALOGUE', text: 'Thank you.', participantIds: expect.arrayContaining(['npc-elder', 'pc-player']) }),
+    ]));
   });
 
   it('accepts only an available quest offered by the current NPC in the same atomic batch', async () => {
