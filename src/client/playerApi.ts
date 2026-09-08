@@ -3,7 +3,8 @@ import type { PlayerBootstrapView, PlayerConversationTurn } from '../application
 export class PlayerApiError extends Error { public constructor(public readonly code: string, message: string) { super(message); } }
 function getSessionId(): string { const key = 'aetheria-player-session'; const existing = sessionStorage.getItem(key); if (existing) return existing; const created = crypto.randomUUID(); sessionStorage.setItem(key, created); return created; }
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, { ...init, headers: { 'Content-Type': 'application/json', 'X-Aetheria-Session-Id': getSessionId(), ...(init?.headers ?? {}) } });
+  const requestId = init?.method && init.method !== 'GET' ? { 'X-Aetheria-Request-Id': crypto.randomUUID() } : {};
+  const response = await fetch(path, { ...init, headers: { 'Content-Type': 'application/json', 'X-Aetheria-Session-Id': getSessionId(), ...requestId, ...(init?.headers ?? {}) } });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new PlayerApiError(typeof body.code === 'string' ? body.code : 'NETWORK_ERROR', typeof body.error === 'string' ? body.error : 'The request could not be completed.');
   return body as T;

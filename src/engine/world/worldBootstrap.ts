@@ -1,6 +1,8 @@
 import { dbManager } from '../persistence/database';
 import { WorldRepository } from './worldRepository';
 import { globalWorld, setRecorderWriteContext } from '../worldState';
+import { PlayerRequestRunRepository } from '../../application/player/playerRequestRunRepository';
+import { RuntimeReconciliationService } from '../autonomy/runtimeReconciliationService';
 
 export class WorldBootstrapIntegrityError extends Error {
   public readonly code = 'WORLD_BOOTSTRAP_INTEGRITY_ERROR';
@@ -14,6 +16,7 @@ export class WorldBootstrapIntegrityError extends Error {
 export class WorldBootstrap {
   public static async bootstrap(worldId = 'world-snapshot-001'): Promise<void> {
     await dbManager.initialize();
+    await PlayerRequestRunRepository.markInProgressUnknown();
 
     const existingSnapshot = await WorldRepository.getWorldSnapshot(worldId);
     const chars = existingSnapshot ? await WorldRepository.getAllCharacters(worldId) : [];
@@ -37,6 +40,7 @@ export class WorldBootstrap {
       } finally {
         setRecorderWriteContext(false);
       }
+      await RuntimeReconciliationService.reconcileWorld(worldId, globalWorld.snapshot.epoch);
     } else {
       const playerCharacter = chars.find((character) => character.type === 'PC');
       if (!playerCharacter) {
@@ -50,6 +54,7 @@ export class WorldBootstrap {
       } finally {
         setRecorderWriteContext(false);
       }
+      await RuntimeReconciliationService.reconcileWorld(worldId, globalWorld.snapshot.epoch);
       console.log(`[WorldBootstrap] Successfully restored world state from SQLite! (${globalWorld.characters.size} characters, ${globalWorld.locations.size} locations, ${globalWorld.organizations.size} organizations)`);
     }
   }

@@ -401,6 +401,7 @@ CREATE TABLE IF NOT EXISTS interaction_turns (
   created_at TEXT NOT NULL, FOREIGN KEY(world_id) REFERENCES worlds(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_interaction_turns_conversation ON interaction_turns(world_id, conversation_id, epoch);
+CREATE INDEX IF NOT EXISTS idx_interaction_turns_session_epoch ON interaction_turns(world_id, conversation_id, session_id, epoch DESC, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS memory_episodes (
   id TEXT PRIMARY KEY, world_id TEXT NOT NULL, observer_type TEXT NOT NULL, observer_id TEXT NOT NULL,
@@ -411,6 +412,7 @@ CREATE TABLE IF NOT EXISTS memory_episodes (
 );
 CREATE INDEX IF NOT EXISTS idx_memory_episodes_observer_epoch ON memory_episodes(world_id, observer_type, observer_id, epoch);
 CREATE INDEX IF NOT EXISTS idx_memory_episodes_observer_location ON memory_episodes(world_id, observer_type, observer_id, location_id);
+CREATE INDEX IF NOT EXISTS idx_memory_episodes_importance ON memory_episodes(world_id, observer_type, observer_id, importance DESC, epoch DESC);
 
 CREATE TABLE IF NOT EXISTS npc_autonomy_runs (
   id TEXT PRIMARY KEY,
@@ -429,6 +431,10 @@ CREATE TABLE IF NOT EXISTS npc_autonomy_runs (
   UNIQUE(world_id, npc_id, epoch)
 );
 CREATE INDEX IF NOT EXISTS idx_npc_autonomy_runs_world_epoch ON npc_autonomy_runs(world_id, epoch DESC);
+CREATE INDEX IF NOT EXISTS idx_scheduled_checkpoints_pending ON scheduled_checkpoints(world_id, status, epoch, sequence);
+CREATE INDEX IF NOT EXISTS idx_quests_assignee_status ON quests(world_id, assignee_character_id, status);
+CREATE INDEX IF NOT EXISTS idx_observed_history_lookup ON observed_history(world_id, observer_type, observer_id, subject_type, subject_id, fact_path, observed_epoch);
+CREATE INDEX IF NOT EXISTS idx_state_change_log_entity_epoch ON state_change_log(world_id, entity_type, entity_id, epoch DESC);
 
 CREATE TABLE IF NOT EXISTS scheduler_wake_signals (
   id TEXT PRIMARY KEY,
@@ -445,4 +451,20 @@ CREATE TABLE IF NOT EXISTS scheduler_wake_signals (
   UNIQUE(world_id, entity_id)
 );
 CREATE INDEX IF NOT EXISTS idx_scheduler_wake_pending ON scheduler_wake_signals(world_id, status, weight, signal_epoch);
+
+CREATE TABLE IF NOT EXISTS player_request_runs (
+  id TEXT PRIMARY KEY,
+  world_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  request_id TEXT NOT NULL,
+  action_key TEXT NOT NULL,
+  status TEXT NOT NULL,
+  http_status INTEGER,
+  response_json TEXT,
+  error_code TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(session_id, request_id, action_key)
+);
+CREATE INDEX IF NOT EXISTS idx_player_request_runs_terminal ON player_request_runs(status, updated_at);
 `;

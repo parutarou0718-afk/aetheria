@@ -6,6 +6,7 @@ import { bootstrapWithDefaultWorld } from './helpers/worldFixture';
 let server: Server | undefined;
 let baseUrl = '';
 const originalGate = process.env.AETHERIA_DEV_INSPECTOR;
+const originalNodeEnvironment = process.env.NODE_ENV;
 
 async function startActualServer(): Promise<void> {
   const app = await createApp({ bootstrap: false, includeFrontend: false });
@@ -26,9 +27,21 @@ afterEach(async () => {
   server = undefined;
   if (originalGate === undefined) delete process.env.AETHERIA_DEV_INSPECTOR;
   else process.env.AETHERIA_DEV_INSPECTOR = originalGate;
+  if (originalNodeEnvironment === undefined) delete process.env.NODE_ENV;
+  else process.env.NODE_ENV = originalNodeEnvironment;
 });
 
 describe('actual server player boundary', () => {
+  it('exposes only safe live and ready health state', async () => {
+    process.env.AETHERIA_DEV_INSPECTOR = 'false';
+    await startActualServer();
+    const live = await fetch(`${baseUrl}/health/live`);
+    const ready = await fetch(`${baseUrl}/health/ready`);
+    expect(live.status).toBe(200);
+    expect(ready.status).toBe(200);
+    expect(JSON.stringify(await ready.json())).not.toMatch(/secret|world_name|database_path/i);
+  });
+
   it('keeps player routes available while developer routes are unreachable in normal player mode', async () => {
     process.env.AETHERIA_DEV_INSPECTOR = 'false';
     await startActualServer();
@@ -46,5 +59,11 @@ describe('actual server player boundary', () => {
     await startActualServer();
     expect((await fetch(`${baseUrl}/api/v1/truths`)).status).toBe(200);
     expect((await fetch(`${baseUrl}/api/v1/admin/stats`)).status).toBe(200);
+  });
+
+  it('fails closed when production is configured with the developer inspector', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.AETHERIA_DEV_INSPECTOR = 'true';
+    await expect(createApp({ bootstrap: false, includeFrontend: false })).rejects.toThrow('AETHERIA_DEV_INSPECTOR');
   });
 });

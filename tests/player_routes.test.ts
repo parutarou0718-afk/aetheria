@@ -52,7 +52,7 @@ describe('player HTTP boundary', () => {
   });
 
   it('rejects player travel to a location that is not a current direct player option', async () => {
-    const response = await fetch(`${baseUrl}/api/v1/player/travel`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ destinationLocationId: 'loc-ruins' }) });
+    const response = await fetch(`${baseUrl}/api/v1/player/travel`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Aetheria-Request-Id': crypto.randomUUID() }, body: JSON.stringify({ destinationLocationId: 'loc-ruins' }) });
     const body = await response.json();
     expect(response.status).toBe(400);
     expect(body.code).toBe('TRAVEL_NOT_AVAILABLE');
@@ -62,16 +62,28 @@ describe('player HTTP boundary', () => {
     const bootstrap = await (await fetch(`${baseUrl}/api/v1/player/bootstrap`)).json();
     const destinationLocationId = bootstrap.travelOptions[0]?.locationId;
     expect(destinationLocationId).toEqual(expect.any(String));
-    const response = await fetch(`${baseUrl}/api/v1/player/travel`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Actor-Id': 'npc-elder' }, body: JSON.stringify({ destinationLocationId }) });
+    const response = await fetch(`${baseUrl}/api/v1/player/travel`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Actor-Id': 'npc-elder', 'X-Aetheria-Request-Id': crypto.randomUUID() }, body: JSON.stringify({ destinationLocationId }) });
     const body = await response.json();
     expect(body.status).toBe('ok');
     expect(body.expectedEndEpoch).toBeGreaterThan(1);
   });
 
   it('rejects profile payloads that try to edit mechanics instead of name or title', async () => {
-    const response = await fetch(`${baseUrl}/api/v1/player/profile`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Traveler', gold: 999999, location: 'loc-secret' }) });
+    const response = await fetch(`${baseUrl}/api/v1/player/profile`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Aetheria-Request-Id': crypto.randomUUID() }, body: JSON.stringify({ name: 'Traveler', gold: 999999, location: 'loc-secret' }) });
     const body = await response.json();
     expect(response.status).toBe(400);
     expect(body.code).toBe('ACTION_REJECTED');
+  });
+
+  it('replays a completed player mutation without executing travel twice', async () => {
+    const bootstrap = await (await fetch(`${baseUrl}/api/v1/player/bootstrap`)).json();
+    const destinationLocationId = bootstrap.travelOptions[0]?.locationId;
+    const requestId = crypto.randomUUID();
+    const options = { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Aetheria-Request-Id': requestId }, body: JSON.stringify({ destinationLocationId }) };
+    const first = await fetch(`${baseUrl}/api/v1/player/travel`, options);
+    const second = await fetch(`${baseUrl}/api/v1/player/travel`, options);
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(second.headers.get('x-aetheria-replayed')).toBe('true');
   });
 });

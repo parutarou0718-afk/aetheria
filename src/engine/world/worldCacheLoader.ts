@@ -1,5 +1,6 @@
 import { WorldRepository } from './worldRepository';
 import { globalWorld, setRecorderWriteContext } from '../worldState';
+import { runtimeHealth } from '../runtime/runtimeHealthService';
 
 export class WorldCacheLoader {
   public static async reload(worldId = 'world-snapshot-001'): Promise<void> {
@@ -52,6 +53,7 @@ export class WorldCacheLoader {
     } finally {
       setRecorderWriteContext(false);
     }
+    runtimeHealth.markCacheSynchronized();
   }
 
   public static async loadWorldStateIntoCache(worldId = 'world-snapshot-001'): Promise<void> {

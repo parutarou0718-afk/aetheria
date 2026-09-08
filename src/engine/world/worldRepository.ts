@@ -237,6 +237,7 @@ export class WorldRepository {
       'interaction_turns',
       'memory_episodes',
       'npc_autonomy_runs',
+      'scheduler_wake_signals',
       'characters',
       'locations',
       'location_edges',

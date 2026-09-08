@@ -2,7 +2,7 @@ import { MemoryEpisodeRepository } from './memoryEpisodeRepository';
 import type { MemoryEpisode } from './memoryEpisodeTypes';
 export class MemoryRetrievalService {
   static async retrieve(input: { worldId: string; observerType: 'CHARACTER' | 'PLAYER'; observerId: string; userInput: string; locationId?: string | null; limit: number }): Promise<MemoryEpisode[]> {
-    const episodes = await MemoryEpisodeRepository.getCandidateEpisodes(input.worldId, input.observerType, input.observerId);
+    const episodes = await MemoryEpisodeRepository.getCandidateEpisodes(input.worldId, input.observerType, input.observerId, input.locationId);
     const terms = input.userInput.toLowerCase().split(/\W+/).filter(term => term.length > 1);
     return episodes.map(episode => {
       const entityMatch = episode.entityIds.some(id => terms.includes(id.toLowerCase()));

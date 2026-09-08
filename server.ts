@@ -25,6 +25,8 @@ import type { GameRequestContext } from './src/application/gameRequestContext';
 import { QuestRepository } from './src/engine/quest/questRepository';
 import { toQuestPublicView } from './src/engine/quest/questPublicView';
 import { registerPlayerRoutes } from './src/server/routes/playerRoutes';
+import { dbManager } from './src/engine/persistence/database';
+import { runtimeHealth } from './src/engine/runtime/runtimeHealthService';
 
 dotenv.config();
 
@@ -182,17 +184,21 @@ function isDeveloperRoute(pathname: string): boolean {
 
 /** Builds the actual HTTP surface; tests use this to exercise the same gate as production. */
 export async function createApp(options: CreateAppOptions = {}): Promise<express.Express> {
+  if (process.env.NODE_ENV === 'production' && process.env.AETHERIA_DEV_INSPECTOR === 'true') {
+    throw new Error('Production cannot start with AETHERIA_DEV_INSPECTOR enabled.');
+  }
   const app = express();
 
   app.use(express.json());
 
   // === INITIALIZE PERSISTENCE LAYER ===
+  await dbManager.initialize();
+  runtimeHealth.markDatabaseHealthy();
   if (options.bootstrap) {
-    try {
-      await WorldBootstrap.bootstrap('world-snapshot-001');
-    } catch (dbErr) {
-      console.error('Failed to initialize SQLite persistent world engine:', dbErr);
-    }
+    try { await WorldBootstrap.bootstrap('world-snapshot-001'); runtimeHealth.markBootstrapHealthy(); }
+    catch (dbErr) { runtimeHealth.markNotReady(); console.error('Failed to initialize SQLite persistent world engine:', dbErr); throw dbErr; }
+  } else {
+    runtimeHealth.markBootstrapHealthy();
   }
 
   // === REST API ENDPOINTS ===
@@ -200,6 +206,8 @@ export async function createApp(options: CreateAppOptions = {}): Promise<express
   // 0. API & LLM Provider Configuration
   registerConfigRoutes(app);
   registerPlayerRoutes(app);
+  app.get('/health/live', (_req, res) => { res.status(200).json({ status: 'LIVE' }); });
+  app.get('/health/ready', (_req, res) => { res.status(runtimeHealth.isReady() ? 200 : 503).json(runtimeHealth.publicView()); });
 
   // The normal browser only receives the player surface. Legacy inspection and
   // mutation routes stay useful for local development, but are never registered
@@ -585,6 +593,12 @@ export async function createApp(options: CreateAppOptions = {}): Promise<express
     res.json({ ...result, snapshot: globalWorld.snapshot });
   });
 
+  // The external HTTP contract never exposes internal exception details.
+  app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    console.error('[Server] Unhandled request failure:', error);
+    if (!res.headersSent) res.status(500).json({ status: 'error', code: 'INTERNAL_ERROR', error: 'The request could not be completed.' });
+  });
+
   // === VITE MIDDLEWARE SETUP ===
   if (!options.includeFrontend) return app;
   if (process.env.NODE_ENV !== 'production') {
@@ -607,9 +621,19 @@ export async function createApp(options: CreateAppOptions = {}): Promise<express
 async function startServer() {
   const PORT = 3000;
   const app = await createApp({ bootstrap: true, includeFrontend: true });
-  app.listen(PORT, '0.0.0.0', () => {
+  const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
+  let stopping = false;
+  const shutdown = async () => {
+    if (stopping) return;
+    stopping = true;
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    try { await dbManager.flush(); await dbManager.close(); }
+    catch (error) { console.error('[Server] Graceful persistence shutdown failed:', error); process.exitCode = 1; }
+  };
+  process.once('SIGTERM', () => { void shutdown(); });
+  process.once('SIGINT', () => { void shutdown(); });
 }
 
 if (process.env.NODE_ENV !== 'test') {

@@ -30,6 +30,7 @@ import { RecorderError } from './recorderErrors';
 import { BatchInvariantValidator } from './batchInvariantValidator';
 import { CachePublisher, PreparedCommit } from './cachePublisher';
 import { WorldCacheLoader } from '../world/worldCacheLoader';
+import { runtimeHealth } from '../runtime/runtimeHealthService';
 import { DependencyRepository } from '../dependency/dependencyRepository';
 import { ObservedHistoryRepository } from '../history/observedHistoryRepository';
 import { QuestRepository } from '../quest/questRepository';
@@ -260,6 +261,7 @@ export class Recorder {
         };
       } catch (reloadErr: any) {
         console.error('[Recorder] WorldCacheLoader reload failed after cache publish error:', reloadErr);
+        runtimeHealth.markCacheUnsynchronized();
         return {
           success: true,
           committedCount: valResult.proposals.length,
