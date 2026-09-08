@@ -74,10 +74,13 @@ export class NPCCognitionEngine {
         return { reply, trustDelta: committed ? trustDelta : 0, favorDelta: committed ? favorDelta : 0, ...(committed && acceptedQuestId ? { actionTriggered: `QUEST_ACCEPTED:${acceptedQuestId}` } : {}) };
       } catch (error) {
         console.error('NPC dialogue generation failed:', error);
-        return { reply: this.buildFallbackReply(npc, resolvedPlayerName, memories), trustDelta: 0, favorDelta: 0 };
+        reply = this.buildFallbackReply(npc, resolvedPlayerName, memories);
+        await this.recordFallbackExchange(context, npc.id, playerMessage, reply, 'FAILED');
+        return { reply, trustDelta: 0, favorDelta: 0 };
       }
     }
     const committed = await this.commitDialogueEffects(context, npc, resolvedPlayerName, playerMessage, trustDelta, favorDelta);
+    await this.recordFallbackExchange(context, npc.id, playerMessage, reply, committed ? 'SUCCESS' : 'REJECTED');
     return { reply, trustDelta: committed ? trustDelta : 0, favorDelta: committed ? favorDelta : 0 };
   }
 
@@ -125,6 +128,10 @@ export class NPCCognitionEngine {
     const location = globalWorld.locations.get(npc.location_id);
     const context = memories[0] || npc.goal.primary || 'the situation around us';
     return `${npc.name} pauses in ${location?.name || globalWorld.snapshot.world_name} before replying to ${playerName}: ${context}.`;
+  }
+
+  private static async recordFallbackExchange(context: GameRequestContext, npcId: string, playerMessage: string, reply: string, outcomeStatus: string): Promise<void> {
+    await InteractionLogService.recordExchange({ worldId: context.worldId, sessionId: context.sessionId, conversationType: 'NPC', conversationId: `NPC:${npcId}:${context.actorId}`, playerId: context.actorId, counterpartId: npcId, playerText: playerMessage, responseText: reply, epoch: globalWorld.snapshot.epoch, outcomeStatus }).catch(() => undefined);
   }
 
   private static renderKnowledge(entries: Array<{ subjectId: string; factPath: string; value: unknown }>): string {

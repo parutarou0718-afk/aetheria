@@ -23,4 +23,15 @@ describe('context sidecar persistence', () => {
     const selected = await MemoryRetrievalService.retrieve({ worldId, observerType: 'CHARACTER', observerId: 'npc-a', userInput: 'merchant betrayed us', locationId: 'bridge', limit: 3 });
     expect(selected[0]?.id).toBe(oldId);
   });
+
+  it('selects relevant older transcript after current-session turns', async () => {
+    const worldId = `context-turns-${crypto.randomUUID()}`;
+    const conversationId = 'DM:pc';
+    await InteractionRepository.appendTurn({ id: `old-${crypto.randomUUID()}`, worldId, sessionId: 'old', conversationType: 'DM', conversationId, speakerType: 'PLAYER', speakerId: 'pc', content: 'The merchant betrayed us at the bridge.', epoch: 2, outcomeStatus: 'SUCCESS', createdAt: '2020-01-01T00:00:00.000Z' });
+    for (let i = 0; i < 14; i++) await InteractionRepository.appendTurn({ id: `new-${crypto.randomUUID()}`, worldId, sessionId: 'new', conversationType: 'DM', conversationId, speakerType: 'PLAYER', speakerId: 'pc', content: `irrelevant weather ${i}`, epoch: 20 + i, outcomeStatus: 'SUCCESS', createdAt: new Date().toISOString() });
+    const current = await InteractionRepository.listRecentSessionTurns(worldId, conversationId, 'new', 12);
+    const older = await InteractionRepository.listRelevantOlderTurns(worldId, conversationId, 'new', 'What happened with that merchant?', 3);
+    expect(current).toHaveLength(12);
+    expect(older.map(turn => turn.content)).toContain('The merchant betrayed us at the bridge.');
+  });
 });

@@ -7,7 +7,7 @@ import { InteractionRepository } from './interactionRepository';
 import { MemoryRetrievalService } from './memoryRetrievalService';
 import { ContextBudgeter } from './contextBudgeter';
 import { DefaultWorldRuleRepository } from '../constraints/rules/worldRuleRepository';
-import { toContextLocationView, toContextRuleView, toDmCharacterView, toNarratorHiddenTruthView, toNpcObservedCharacterView, toNpcSelfView } from './contextViews';
+import { toContextInteractionTurn, toContextLocationView, toContextMemoryEpisode, toContextRuleView, toDmCharacterView, toNarratorHiddenTruthView, toNpcObservedCharacterView, toNpcSelfView } from './contextViews';
 
 export class ContextAssembler {
   static async assemble(request: ContextRequest): Promise<ContextPacket> {
@@ -22,7 +22,7 @@ export class ContextAssembler {
     const packet: ContextPacket = { version: 1, world: { id: snapshot.id, name: snapshot.world_name, epoch }, diagnostics: { estimatedTokens: 0, budgetLimit: policy.maxEstimatedTokens, includedCounts: {}, droppedCounts: {} } };
     if (policy.includeWorldProfile) {
       const profile = await WorldRepository.getWorldProfile(request.worldId);
-      packet.world.profile = profile ? { displayName: profile.display_name, description: profile.world_description, genre: profile.genre, cosmology: profile.cosmology, narrationStyle: profile.narration_style } : undefined;
+      packet.world.profile = profile ? { displayName: profile.display_name, description: profile.world_description, genre: profile.genre, cosmology: profile.cosmology, narratorRole: profile.narrative_style?.narratorRole ?? profile.narrator_role, narrationStyle: profile.narration_style } : undefined;
     }
     if (policy.includeWorldAxioms) packet.world.axioms = (await WorldRepository.getWorldAxioms(request.worldId)).map(axiom => ({ statement: axiom.statement, immutable: axiom.immutable }));
     if (policy.includeWorldRules) packet.world.rules = (await new DefaultWorldRuleRepository().getEnabledRules(request.worldId)).map(toContextRuleView);
@@ -39,8 +39,13 @@ export class ContextAssembler {
       packet.quests = quests.slice(0, policy.limits.quests).map(q => ({ id: q.id, title: q.title, description: q.description, status: q.status, objectiveDescription: q.objective.description }));
     }
     const conversationId = request.purpose === 'NPC_DIALOGUE' && request.npcId ? `NPC:${request.npcId}:${request.actorId}` : `DM:${request.actorId}`;
-    if (policy.includeRecentInteractions) packet.recentInteractions = await InteractionRepository.listRecentTurns(request.worldId, conversationId, policy.limits.recentTurns);
-    if (policy.includeEpisodicMemory) packet.relevantMemories = await MemoryRetrievalService.retrieve({ worldId: request.worldId, observerType: policy.observerScope === 'NPC' ? 'CHARACTER' : 'PLAYER', observerId: policy.observerScope === 'NPC' ? request.npcId || request.actorId : request.actorId, userInput: request.userInput, locationId: sceneOwner?.location_id, limit: policy.limits.memories });
+    if (policy.includeRecentInteractions) {
+      const recent = await InteractionRepository.listRecentSessionTurns(request.worldId, conversationId, request.sessionId, policy.limits.recentTurns);
+      const remaining = Math.max(0, policy.limits.recentTurns - recent.length);
+      const older = remaining ? await InteractionRepository.listRelevantOlderTurns(request.worldId, conversationId, request.sessionId, request.userInput, remaining) : [];
+      packet.recentInteractions = [...older, ...recent].map(toContextInteractionTurn);
+    }
+    if (policy.includeEpisodicMemory) packet.relevantMemories = (await MemoryRetrievalService.retrieve({ worldId: request.worldId, observerType: policy.observerScope === 'NPC' ? 'CHARACTER' : 'PLAYER', observerId: policy.observerScope === 'NPC' ? request.npcId || request.actorId : request.actorId, userInput: request.userInput, locationId: sceneOwner?.location_id, limit: policy.limits.memories })).map(toContextMemoryEpisode);
     if (policy.observerScope === 'PLAYER' || policy.observerScope === 'NPC') {
       const knowledge = await new ObserverKnowledgeService().getKnowledgeSnapshot({ worldId: request.worldId, observerType: policy.observerScope === 'NPC' ? 'CHARACTER' : 'PLAYER', observerId: policy.observerScope === 'NPC' ? request.npcId || request.actorId : request.actorId, atEpoch: epoch });
       packet.observerKnowledge = {
@@ -55,7 +60,7 @@ export class ContextAssembler {
       const terms = request.userInput.toLowerCase().split(/\W+/).filter(Boolean);
       const relevantIds = new Set([request.actorId, location?.id, request.npcId].filter(Boolean));
       const truths = await WorldRepository.getAllHiddenTruths(request.worldId);
-      const ranked = truths.filter(truth => policy.hiddenTruthAccess === 'RELEVANT_AUTHORING' || truth.revealed_to_ids.includes(request.actorId) || relevantIds.has(truth.true_owner_id) || terms.some(term => term.length > 2 && `${truth.title} ${truth.true_nature} ${truth.true_goal ?? ''}`.toLowerCase().includes(term)))
+      const ranked = truths.filter(truth => truth.revealed_to_ids.includes(request.actorId) || relevantIds.has(truth.true_owner_id) || terms.some(term => term.length > 2 && `${truth.title} ${truth.true_nature} ${truth.true_goal ?? ''}`.toLowerCase().includes(term)))
         .sort((a, b) => a.id.localeCompare(b.id)).slice(0, policy.limits.hiddenTruths);
       packet.narratorPrivate = { hiddenTruths: ranked.map(toNarratorHiddenTruthView) };
     }

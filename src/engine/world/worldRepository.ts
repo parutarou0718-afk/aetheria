@@ -233,6 +233,9 @@ export class WorldRepository {
     const tables = [
       'world_profiles',
       'world_axioms',
+      'quests',
+      'interaction_turns',
+      'memory_episodes',
       'characters',
       'locations',
       'location_edges',
