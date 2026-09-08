@@ -7,4 +7,9 @@ describe('AuthorityValidator', () => {
     expect(AuthorityValidator.validate({ ...base, operation: 'ADVANCE_WORLD_EPOCH' }).valid).toBe(false);
     expect(AuthorityValidator.validate({ ...base, operation: 'ADVANCE_WORLD_EPOCH', authorityLevel: 'SYSTEM' }).valid).toBe(true);
   });
+
+  it('requires SYSTEM authority for timeline-owned character presence', () => {
+    expect(AuthorityValidator.validate({ ...base, operation: 'SET_CHARACTER_PRESENCE', authorityLevel: 'ACTOR' })).toMatchObject({ valid: false, requiredAuthority: 'SYSTEM' });
+    expect(AuthorityValidator.validate({ ...base, operation: 'SET_CHARACTER_PRESENCE', authorityLevel: 'SYSTEM' })).toMatchObject({ valid: true });
+  });
 });

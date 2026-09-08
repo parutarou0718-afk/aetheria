@@ -33,6 +33,14 @@ export class CapabilityValidator {
       const targetId = proposal.entityId ?? String(proposal.payload.characterId ?? proposal.payload.id ?? '');
       if (targetId !== proposal.actorId) return { code: 'ACTOR_STATE_MUTATION_FORBIDDEN', requirementType: 'ACTOR_CHARACTER_UPDATE', targetId };
     }
+    if (proposal.operation === 'SET_CHARACTER_PRESENCE') {
+      return { code: 'ACTOR_STATE_MUTATION_FORBIDDEN', requirementType: 'CHARACTER_PRESENCE_OWNERSHIP' };
+    }
+    if (proposal.operation === 'MOVE_CHARACTER' || proposal.operation === 'SET_CHARACTER_ACTION') {
+      const targetIds = [proposal.entityId, proposal.payload.characterId].filter((value): value is string => typeof value === 'string' && value.length > 0);
+      const foreignTarget = targetIds.find((targetId) => targetId !== proposal.actorId);
+      if (foreignTarget) return { code: 'ACTOR_STATE_MUTATION_FORBIDDEN', requirementType: 'ACTOR_CHARACTER_ACTION_OWNERSHIP', targetId: foreignTarget };
+    }
     if ((proposal.operation === 'UPDATE_CHARACTER_ATTRIBUTES' || proposal.operation === 'CHANGE_RESOURCE') && !originatedFromSemanticResolution) {
       return { code: 'DIRECT_NUMERIC_MUTATION_FORBIDDEN', requirementType: 'SEMANTIC_EFFECT_PROVENANCE' };
     }

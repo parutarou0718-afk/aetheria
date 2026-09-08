@@ -120,6 +120,49 @@ describe('capability runtime', () => {
     expect(other.rejected).toEqual([expect.objectContaining({ code: 'PROPOSAL_CAPABILITY_VIOLATION', capabilityReason: 'ACTOR_STATE_MUTATION_FORBIDDEN' })]);
   });
 
+  it('keeps SET_CHARACTER_PRESENCE out of the ACTOR pipeline and leaves presence state unchanged', async () => {
+    const before = (await WorldRepository.getCharacter(worldId, 'pc-player'))!;
+    const committer = { commit: vi.fn().mockResolvedValue({ success: true, errors: [], committedCount: 1, appliedProposalIds: [], proposalResults: [], eventsGenerated: [], epoch: 1 }) };
+    const result = await new ProposalPipeline(committer as any).processAndCommit({ worldId, proposals: [base({
+      operation: 'SET_CHARACTER_PRESENCE', payload: { characterId: 'pc-player', location_id: 'loc-ruins', presence_state: 'AT_LOCATION', current_transaction_id: 'forged-tx' },
+    })] });
+    expect(result.success).toBe(false);
+    expect(committer.commit).not.toHaveBeenCalled();
+    expect(await WorldRepository.getCharacter(worldId, 'pc-player')).toMatchObject({ location_id: before.location_id, presence_state: before.presence_state, current_transaction_id: before.current_transaction_id });
+  });
+
+  it('rejects direct ACTOR presence mutation in capability defense even if authority policy regresses', async () => {
+    const result = await new CapabilityValidator().validate({ worldId, proposal: base({
+      operation: 'SET_CHARACTER_PRESENCE', entityId: 'pc-player', payload: { characterId: 'pc-player', location_id: 'loc-ruins', presence_state: 'AT_LOCATION' },
+    }) });
+    expect(result).toMatchObject({ valid: false, violations: [expect.objectContaining({ code: 'ACTOR_STATE_MUTATION_FORBIDDEN' })] });
+  });
+
+  it('rejects an ACTOR presence mutation aimed at another character', async () => {
+    const npcBefore = (await WorldRepository.getCharacter(worldId, 'npc-elder'))!;
+    const result = await new ProposalPipeline().processAndCommit({ worldId, proposals: [base({
+      operation: 'SET_CHARACTER_PRESENCE', entityId: 'npc-elder', payload: { characterId: 'npc-elder', location_id: 'loc-ruins', presence_state: 'AT_LOCATION' },
+    })] });
+    expect(result.success).toBe(false);
+    expect((await WorldRepository.getCharacter(worldId, 'npc-elder'))!).toMatchObject({ location_id: npcBefore.location_id, presence_state: npcBefore.presence_state, current_transaction_id: npcBefore.current_transaction_id });
+  });
+
+  it.each([
+    ['MOVE_CHARACTER', { characterId: 'pc-player', targetLocationId: 'loc-dawnfall' }],
+    ['SET_CHARACTER_ACTION', { characterId: 'pc-player', action: { type: 'WAIT', description: 'Wait.', started_at_epoch: 1, estimated_end_epoch: 1 } }],
+  ] as const)('permits self-targeted ACTOR %s capability validation', async (operation, payload) => {
+    const result = await new CapabilityValidator().validate({ worldId, proposal: base({ operation, payload }) });
+    expect(result.valid).toBe(true);
+  });
+
+  it.each([
+    ['MOVE_CHARACTER', { characterId: 'npc-elder', targetLocationId: 'loc-tavern' }],
+    ['SET_CHARACTER_ACTION', { characterId: 'npc-elder', action: { type: 'WAIT', description: 'Forged wait.', started_at_epoch: 1, estimated_end_epoch: 1 } }],
+  ] as const)('rejects cross-target ACTOR %s capability validation', async (operation, payload) => {
+    const result = await new CapabilityValidator().validate({ worldId, proposal: base({ operation, entityId: 'npc-elder', payload }) });
+    expect(result).toMatchObject({ valid: false, violations: [expect.objectContaining({ code: 'ACTOR_STATE_MUTATION_FORBIDDEN' })] });
+  });
+
   it('treats an ineligible empty assessment as a failure', async () => {
     const evaluator = { evaluate: vi.fn().mockResolvedValue({ eligible: false, failures: [] }) };
     const result = await new (CapabilityValidator as any)(evaluator).validate({ worldId, proposal: base({ capabilityRequirements: [{ type: 'ACTIVE_CHARACTER' }] }) });
