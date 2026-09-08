@@ -7,6 +7,7 @@ import { InteractionRepository } from './interactionRepository';
 import { MemoryRetrievalService } from './memoryRetrievalService';
 import { ContextBudgeter } from './contextBudgeter';
 import { DefaultWorldRuleRepository } from '../constraints/rules/worldRuleRepository';
+import { CapabilitySnapshotService } from '../capability/capabilitySnapshot';
 import { toContextInteractionTurn, toContextLocationView, toContextMemoryEpisode, toContextRuleView, toDmCharacterView, toNarratorHiddenTruthView, toNpcObservedCharacterView, toNpcSelfView } from './contextViews';
 
 export class ContextAssembler {
@@ -26,8 +27,8 @@ export class ContextAssembler {
     }
     if (policy.includeWorldAxioms) packet.world.axioms = (await WorldRepository.getWorldAxioms(request.worldId)).map(axiom => ({ statement: axiom.statement, immutable: axiom.immutable }));
     if (policy.includeWorldRules) packet.world.rules = (await new DefaultWorldRuleRepository().getEnabledRules(request.worldId)).map(toContextRuleView);
-    if (actor && policy.includeActorPrivateState) packet.actor = toDmCharacterView(actor);
-    if (npc) packet.actor = toNpcSelfView(npc, request.actorId);
+    if (actor && policy.includeActorPrivateState) packet.actor = { ...toDmCharacterView(actor), capability: CapabilitySnapshotService.fromCharacter(actor) };
+    if (npc) packet.actor = { ...toNpcSelfView(npc, request.actorId), capability: CapabilitySnapshotService.fromCharacter(npc) };
     if (policy.includeScene) {
       const present = location ? (await WorldRepository.getAllCharacters(request.worldId)).filter(character => character.location_id === location.id) : [];
       packet.scene = { location: location ? toContextLocationView(location) : undefined, characters: present.map(character => toNpcObservedCharacterView(character)) };

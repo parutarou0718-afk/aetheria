@@ -6,7 +6,7 @@ import type { ProposalV2 } from '../src/engine/proposal/proposalSchema';
 const proposal = (overrides: Partial<ProposalV2> = {}): ProposalV2 => ({
   id: 'proposal-rule-pipeline', operation: 'CHANGE_RESOURCE', entityType: 'CHARACTER', entityId: 'pc-player',
   payload: { characterId: 'pc-player', goldDelta: 1 }, effectiveEpoch: 1, preconditions: [], source: { type: 'PLAYER_ACTION' },
-  reason: 'Spend gold.', causalBasis: [{ type: 'PLAYER_ACTION', description: 'Spend gold.' }], authorityLevel: 'ACTOR', ...overrides,
+  reason: 'Apply a deterministic resource update.', causalBasis: [{ type: 'SYSTEM_EVENT', description: 'A deterministic system update occurred.' }], authorityLevel: 'SYSTEM', ...overrides,
 });
 
 const committer = () => ({ commit: vi.fn().mockResolvedValue({ success: true, errors: [], committedCount: 1, appliedProposalIds: [], proposalResults: [], eventsGenerated: [], epoch: 1 }) });

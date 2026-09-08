@@ -10,6 +10,7 @@ import { CausalBasisValidator } from '../constraints/causality/causalBasisValida
 import { WorldRepositoryCausalBasisStateReader } from '../constraints/causality/causalBasisStateReader';
 import type { CausalBasisViolation } from '../constraints/causality/causalBasisTypes';
 import { ParameterResolver } from '../constraints/parameters/parameterResolver';
+import { CapabilityValidator } from '../capability/capabilityValidator';
 import { ObservedHistoryValidator } from '../history/observedHistoryValidator';
 import type { HistoryConflict } from '../history/observedHistoryTypes';
 import { ProposalSchema, type ProposalV2 } from './proposalSchema';
@@ -26,6 +27,7 @@ export interface ProposalRejection {
     | 'PROPOSAL_AUTHORITY_INSUFFICIENT'
     | 'PROPOSAL_CAUSAL_BASIS_INVALID'
     | 'PROPOSAL_PARAMETER_RESOLUTION_FAILED'
+    | 'PROPOSAL_CAPABILITY_VIOLATION'
     | 'PROPOSAL_RULE_VIOLATION'
     | 'PROPOSAL_HISTORY_CONFLICT'
     | 'PROPOSAL_PRECONDITION_FAILED'
@@ -42,6 +44,10 @@ export interface ProposalRejection {
   subjectId?: string;
   factPath?: string;
   observedEpoch?: number;
+  capabilityReason?: string;
+  actorId?: string;
+  targetId?: string;
+  requirementType?: string;
 }
 
 export interface ProposalPipelineResult {
@@ -77,6 +83,7 @@ export class ProposalPipeline {
     private readonly causalValidator: CausalValidator = defaultCausalValidator,
     private readonly parameterResolver = new ParameterResolver(),
     private readonly historyValidator: HistoryValidator = new ObservedHistoryValidator(),
+    private readonly capabilityValidator = new CapabilityValidator(),
   ) {}
 
   async processAndCommit(input: ProposalPipelineInput): Promise<ProposalPipelineResult> {
@@ -112,6 +119,12 @@ export class ProposalPipeline {
         continue;
       }
       const resolvedProposal = resolution.proposal;
+
+      const capabilityResult = await this.capabilityValidator.validate({ worldId: input.worldId, proposal: resolvedProposal });
+      if (!capabilityResult.valid) {
+        for (const violation of capabilityResult.violations) rejected.push({ proposalId: proposal.id, code: 'PROPOSAL_CAPABILITY_VIOLATION', message: 'The action is not currently feasible.', capabilityReason: violation.code, actorId: violation.actorId, targetId: violation.targetId, requirementType: violation.requirementType });
+        continue;
+      }
 
       const ruleResult = await this.ruleValidator.validate({ worldId: input.worldId, proposal: resolvedProposal });
       if (!ruleResult.valid) {

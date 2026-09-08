@@ -56,6 +56,18 @@ describe('proposal runtime boundary', () => {
     }
   });
 
+  it('keeps capability evaluation deterministic, repository-read-only, and outside AI transport', () => {
+    for (const path of [
+      'src/engine/capability/capabilitySnapshot.ts',
+      'src/engine/capability/capabilityEvaluator.ts',
+      'src/engine/capability/capabilityPolicy.ts',
+      'src/engine/capability/capabilityValidator.ts',
+    ]) {
+      const source = readFileSync(resolve(root, path), 'utf8');
+      expect(source, path).not.toMatch(/aiService|llmClient|generateJson|generateText|DMEngine|recorder\s*\.\s*commit\s*\(|setRecorderWriteContext\s*\(/);
+    }
+  });
+
   it('keeps history validation and observer knowledge deterministic and read-only', () => {
     for (const path of [
       'src/engine/history/observedHistoryValidator.ts',

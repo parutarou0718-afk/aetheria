@@ -103,10 +103,22 @@ export function registerCharacterActionRoutes(app: express.Express): void {
     } else if (action_type === 'REST') {
       proposals.push({
         id: `prop-route-rest-${Date.now()}`,
-        operation: 'UPDATE_CHARACTER_ATTRIBUTES',
+        operation: 'APPLY_SEMANTIC_EFFECT',
         entityType: 'CHARACTER',
         entityId: char.id,
-        payload: { characterId: char.id, hpDelta: 20, mpDelta: 15 },
+        payload: {},
+        semanticEffect: { type: 'RECOVERY', magnitude: 'MEDIUM', resource: 'HP', targetEntityId: char.id },
+        effectiveEpoch: currentEpoch,
+        preconditions: [],
+        source: { type: 'PLAYER_ACTION', id: char.id },
+      });
+      proposals.push({
+        id: `prop-route-rest-mp-${Date.now()}`,
+        operation: 'APPLY_SEMANTIC_EFFECT',
+        entityType: 'CHARACTER',
+        entityId: char.id,
+        payload: {},
+        semanticEffect: { type: 'RESOURCE_GAIN', magnitude: 'MEDIUM', resource: 'MP', targetEntityId: char.id },
         effectiveEpoch: currentEpoch,
         preconditions: [],
         source: { type: 'PLAYER_ACTION', id: char.id },
@@ -139,6 +151,7 @@ export function registerCharacterActionRoutes(app: express.Express): void {
           reason: `Player submitted ${action_type} action.`,
           causalBasis: [{ type: 'PLAYER_ACTION', id: char.id, description: `REST action submitted by ${char.name}.` }],
           authorityLevel: 'ACTOR',
+          actorId: char.id,
         })),
       });
       if (!pipelineResult.success) {

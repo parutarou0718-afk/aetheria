@@ -22,6 +22,7 @@ describe('context assembly isolation', () => {
     expect(serialized).not.toContain('never disclose');
     expect(serialized).not.toContain('private line for other npc');
     expect(packet.actor).toMatchObject({ id: 'npc-elder' });
+    expect(packet.actor).toMatchObject({ capability: { characterId: 'npc-elder', actionState: 'AVAILABLE' } });
   });
 
   it('keeps player knowledge separate while giving the DM bounded narrator-private truth', async () => {
@@ -31,6 +32,8 @@ describe('context assembly isolation', () => {
     expect(JSON.stringify(packet.narratorPrivate)).toContain('guard is dead');
     expect(JSON.stringify(packet.observerKnowledge)).not.toContain('guard is dead');
     expect((packet.narratorPrivate as { hiddenTruths: unknown[] }).hiddenTruths).toHaveLength(1);
+    expect(packet.actor).toMatchObject({ capability: { characterId: 'pc-player', resources: { hp: 100, mp: 60, gold: 100 } } });
+    expect(JSON.stringify(packet.observerKnowledge)).not.toContain('"capability"');
   });
 
   it('keeps newest current-session turns while reserving space for relevant older DM continuity', async () => {

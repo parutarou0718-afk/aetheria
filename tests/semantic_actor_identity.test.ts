@@ -37,6 +37,18 @@ async function setStatus(characterId: string, status: 'ALIVE' | 'DEAD'): Promise
   await WorldRepository.saveCharacter(worldId, character);
 }
 
+async function colocate(characterId: string): Promise<void> {
+  const character = globalWorld.characters.get(characterId)!;
+  setRecorderWriteContext(true);
+  try {
+    character.location_id = 'loc-tavern';
+    character.presence_state = 'AT_LOCATION';
+  } finally {
+    setRecorderWriteContext(false);
+  }
+  await WorldRepository.saveCharacter(worldId, character);
+}
+
 describe('semantic actor identity', () => {
   beforeEach(async () => {
     await bootstrapWithDefaultWorld(worldId);
@@ -51,14 +63,13 @@ describe('semantic actor identity', () => {
       proposals: [semanticDamage('pc-player', 'npc-elder')],
     });
 
-    expect(result).toMatchObject({
-      success: false,
-      rejected: [expect.objectContaining({ code: 'PROPOSAL_RULE_VIOLATION', ruleType: 'DEAD_CHARACTER_CANNOT_ACT' })],
-    });
+    expect(result.success).toBe(false);
+    expect(result.rejected).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'PROPOSAL_CAPABILITY_VIOLATION', capabilityReason: 'ACTOR_NOT_ACTIVE' })]));
     expect(commitSpy).not.toHaveBeenCalled();
   });
 
   it('does not reject an alive actor solely because the semantic effect target is dead', async () => {
+    await colocate('npc-elder');
     await setStatus('npc-elder', 'DEAD');
     const before = (await WorldRepository.getCharacter(worldId, 'npc-elder'))!.attributes.hp;
 
@@ -72,6 +83,7 @@ describe('semantic actor identity', () => {
   });
 
   it('preserves an alive actor separately from a living target and applies policy damage to the target', async () => {
+    await colocate('npc-elder');
     const before = (await WorldRepository.getCharacter(worldId, 'npc-elder'))!.attributes.hp;
 
     const result = await new ProposalPipeline().processAndCommit({

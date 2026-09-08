@@ -4,7 +4,7 @@ import { parseDmResolutionIntent, type DmResolutionIntent } from './dmResolution
 import { ContextAssembler } from '../context/contextAssembler';
 import { ContextRenderer } from '../context/contextRenderer';
 
-export type RepairableProposalRejectionCode = 'PROPOSAL_RULE_VIOLATION' | 'PROPOSAL_PARAMETER_RESOLUTION_FAILED' | 'PROPOSAL_PRECONDITION_FAILED' | 'PROPOSAL_HISTORY_CONFLICT';
+export type RepairableProposalRejectionCode = 'PROPOSAL_RULE_VIOLATION' | 'PROPOSAL_PARAMETER_RESOLUTION_FAILED' | 'PROPOSAL_CAPABILITY_VIOLATION' | 'PROPOSAL_PRECONDITION_FAILED' | 'PROPOSAL_HISTORY_CONFLICT';
 export interface ProposalRepairFeedback {
   proposalId: string;
   code: RepairableProposalRejectionCode;
@@ -15,12 +15,13 @@ export interface ProposalRepairFeedback {
   subjectId?: string;
   factPath?: string;
   observedEpoch?: number;
+  capabilityReason?: string;
 }
 
 interface RepairAi { generateJson(context: { userId: string; worldId: string; purpose: 'PROPOSAL_REPAIR' }, system: string, user: string, options?: { timeoutMs?: number }): Promise<unknown>; }
-type PipelineRejection = { proposalId: string; code: string; ruleType?: string; hardness?: string; message: string; subjectType?: string; subjectId?: string; factPath?: string; observedEpoch?: number };
+type PipelineRejection = { proposalId: string; code: string; ruleType?: string; hardness?: string; message: string; subjectType?: string; subjectId?: string; factPath?: string; observedEpoch?: number; capabilityReason?: string };
 
-const repairable = new Set<RepairableProposalRejectionCode>(['PROPOSAL_RULE_VIOLATION', 'PROPOSAL_PARAMETER_RESOLUTION_FAILED', 'PROPOSAL_PRECONDITION_FAILED', 'PROPOSAL_HISTORY_CONFLICT']);
+const repairable = new Set<RepairableProposalRejectionCode>(['PROPOSAL_RULE_VIOLATION', 'PROPOSAL_PARAMETER_RESOLUTION_FAILED', 'PROPOSAL_CAPABILITY_VIOLATION', 'PROPOSAL_PRECONDITION_FAILED', 'PROPOSAL_HISTORY_CONFLICT']);
 
 export class DmRepairService {
   public constructor(private readonly ai: RepairAi = aiService as RepairAi) {}
@@ -42,6 +43,7 @@ export class DmRepairService {
       subjectId: rejection.subjectId,
       factPath: rejection.factPath,
       observedEpoch: rejection.observedEpoch,
+      capabilityReason: rejection.code === 'PROPOSAL_CAPABILITY_VIOLATION' ? rejection.capabilityReason : undefined,
     }));
   }
 

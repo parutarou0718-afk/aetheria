@@ -82,7 +82,7 @@ describe('default world rules in the proposal pipeline', () => {
     const target = committer();
     const result = await new ProposalPipeline(target).processAndCommit({
       worldId,
-      proposals: [proposal({ operation: 'CHANGE_RESOURCE', payload: { characterId: 'pc-player', goldDelta: -(startingGold + 1) } })],
+      proposals: [proposal({ operation: 'CHANGE_RESOURCE', payload: { characterId: 'pc-player', goldDelta: -(startingGold + 1) }, authorityLevel: 'SYSTEM' })],
     });
     expect(result.rejected).toEqual([expect.objectContaining({ ruleType: 'RESOURCE_NON_NEGATIVE' })]);
     expect(target.commit).not.toHaveBeenCalled();
