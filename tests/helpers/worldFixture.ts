@@ -13,6 +13,7 @@
 import { WorldBootstrap } from '../../src/engine/world/worldBootstrap';
 import { globalWorld, setRecorderWriteContext } from '../../src/engine/worldState';
 import { WorldRepository } from '../../src/engine/world/worldRepository';
+import { dbManager } from '../../src/engine/persistence/database';
 
 export async function bootstrapWithDefaultWorld(worldId = 'world-snapshot-001'): Promise<void> {
   await dbFixtureBootstrap(worldId);
@@ -33,6 +34,7 @@ async function dbFixtureBootstrap(worldId: string): Promise<void> {
 }
 
 async function saveAll(worldId: string): Promise<void> {
+  await dbManager.transaction(async () => {
   await WorldRepository.saveWorldSnapshot(globalWorld.snapshot);
   for (const loc of globalWorld.locations.values()) {
     await WorldRepository.saveLocation(worldId, loc);
@@ -67,6 +69,7 @@ async function saveAll(worldId: string): Promise<void> {
   for (const evt of globalWorld.events) {
     await WorldRepository.saveEvent(worldId, evt);
   }
+  });
 }
 
 export { WorldBootstrap };

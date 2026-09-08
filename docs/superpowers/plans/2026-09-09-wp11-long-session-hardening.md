@@ -29,22 +29,22 @@
 
 **Files:** `src/engine/world/worldBootstrap.ts`, `src/engine/world/worldResetService.ts`, `src/engine/world/*Lock*.ts`, `src/engine/proposal/proposalPipeline.ts`, scheduler files, tests for bootstrap/reset/pipeline/scheduler.
 
-- [ ] Add failing tests for CREATED-world integrity failure, reset durability failure, concurrent conflicting proposal validation, and serialized scheduler ticks.
-- [ ] Make bootstrap fail closed, reset persist-before-publish, serialize genesis/reset ownership, proposal validation-to-recorder commit, and scheduler tick bodies.
-- [ ] Run focused bootstrap/reset/pipeline/timeline suites and commit the lifecycle layer.
+- [x] Add failing tests for CREATED-world integrity failure, reset durability failure, concurrent conflicting proposal validation, and serialized scheduler ticks.
+- [x] Make bootstrap fail closed, reset persist-before-publish, serialize genesis/reset ownership, proposal validation-to-recorder commit, and scheduler tick bodies.
+- [x] Run focused bootstrap/reset/pipeline/timeline suites and commit the lifecycle layer.
 
 ### Task 3: Persist wake signals, request idempotency, and reconcile sidecars
 
 **Files:** scheduler repository/service files, `src/application/player/*`, autonomy repository/reconciliation files, schema, tests.
 
-- [ ] Add failing restart, commit-failure, duplicate request, UNKNOWN, and autonomy recovery/claim-error tests.
-- [ ] Add narrowly scoped tables/repositories, at-least-once wake consumption after commit, request claim/replay protocol, startup reconciliation, and bounded sidecar maintenance.
-- [ ] Run scheduler, player route, autonomy suites and commit the sidecar layer.
+- [x] Add failing restart, commit-failure, duplicate request, UNKNOWN, and autonomy recovery/claim-error tests.
+- [x] Add narrowly scoped tables/repositories, at-least-once wake consumption after commit, request claim/replay protocol, startup reconciliation, and bounded sidecar maintenance.
+- [x] Run scheduler, player route, autonomy suites and commit the sidecar layer.
 
 ### Task 4: Long-session bounds, health, shutdown, and end-to-end faults
 
 **Files:** context/memory repositories, schema indexes, health service, `server.ts`, bootstrap/startup files, integration/soak tests.
 
-- [ ] Add failing bounded-candidate, health readiness, production developer-gate, restart, cache-failure, and deterministic soak tests.
-- [ ] Bound retrieval candidate SQL, add non-duplicative indexes and text limits, gate mutations on health, add safe health endpoints and graceful shutdown.
+- [x] Add cache-failure and deterministic soak coverage; bounded retrieval, health readiness, production-gate, and restart regressions are in place.
+- [x] Bound retrieval candidate SQL, add non-duplicative indexes and text limits, gate mutations on health, add safe health endpoints and graceful shutdown.
 - [ ] Run targeted long-session/restart/health suites, full `npm ci`, audit, lint, direct-write audit, tests, build, verify, and diff check; push exact HEAD and confirm CI.

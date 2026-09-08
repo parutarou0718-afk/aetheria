@@ -7,6 +7,7 @@ import { GlobalTimeline } from './timeline/globalTimeline';
 import { NpcAutonomyCoordinator, type NpcAutonomyCandidate } from './autonomy/npcAutonomyCoordinator';
 import { MAX_NPC_AUTONOMY_DECISIONS_PER_EPOCH } from './autonomy/npcAutonomyTypes';
 import { WakeSignalRepository } from './scheduler/wakeSignalRepository';
+import { WorldMutationLock } from './world/worldMutationLock';
 
 export const WAKE_WEIGHTS: Record<string, number> = {
   PLAYER_APPROACH: 0,
@@ -31,6 +32,7 @@ export const WAKE_COSTS: Record<string, number> = {
 };
 
 export class SchedulerEngine {
+  private static readonly tickLock = new WorldMutationLock();
   public static async pushWakeSignal(signal: WakeSignal, targetWorldId = globalWorld.snapshot.id): Promise<void> {
     signal.weight = WAKE_WEIGHTS[signal.reason] ?? 7;
     await WakeSignalRepository.enqueue({ worldId: targetWorldId, entityId: signal.entity_id, entityType: signal.entity_type, reason: signal.reason, signalEpoch: signal.epoch, weight: signal.weight });
@@ -45,6 +47,17 @@ export class SchedulerEngine {
     autonomy?: { attempted: number; committed: number; rejected: number; skipped: number; failed: number };
   }> {
     const worldId = targetWorldId || globalWorld.snapshot.id || 'world-snapshot-001';
+    return this.tickLock.runExclusive(worldId, () => this.processEpochTickUnlocked(worldId));
+  }
+
+  private static async processEpochTickUnlocked(worldId: string): Promise<{
+    epoch: number;
+    woken_entities: string[];
+    events_generated: number;
+    catchup_performed: number;
+    warnings: string[];
+    autonomy?: { attempted: number; committed: number; rejected: number; skipped: number; failed: number };
+  }> {
     const proposals: StateChangeProposal[] = [];
     const targetEpoch = globalWorld.snapshot.epoch + 1;
 

@@ -40,13 +40,13 @@ export class WorldResetService {
     // database transaction has completed its atomic durable flush.
     await dbManager.transaction(async () => {
       await WorldRepository.deleteWorldData(worldId);
-      await WorldRepository.saveWorldSnapshot(emptySnapshot);
+      await WorldRepository.saveWorldSnapshot(emptySnapshot); // audit-direct-write: allow reset lifecycle persistence
     });
 
     setRecorderWriteContext(true);
     try {
       globalWorld.initEmptyWorld();
-      globalWorld.snapshot.id = worldId;
+      globalWorld.snapshot.id = worldId; // audit-direct-write: allow reset lifecycle publication
     } finally {
       setRecorderWriteContext(false);
     }

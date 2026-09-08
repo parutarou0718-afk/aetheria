@@ -94,4 +94,13 @@ describe('DatabaseManager durability and operation isolation', () => {
     const failed = createDatabaseManager({ databasePath });
     await expect(failed.initialize()).rejects.toMatchObject({ code: 'DATABASE_CORRUPTION' });
   });
+
+  it('refuses a second live process owner for the same SQL.js persistence file', async () => {
+    const databasePath = createTemporaryDatabasePath();
+    const owner = createDatabaseManager({ databasePath });
+    await owner.initialize();
+    const contender = createDatabaseManager({ databasePath });
+    await expect(contender.initialize()).rejects.toMatchObject({ code: 'DATABASE_ALREADY_IN_USE' });
+    await owner.close();
+  });
 });

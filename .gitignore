@@ -10,4 +10,7 @@ coverage/
 *.sqlite
 *.sqlite3
 *.db-journal
+*.db.bak
+*.db.lock
+.*.db.*.tmp
 aetheria.db
