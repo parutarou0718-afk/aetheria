@@ -39,6 +39,7 @@ export class SchedulerEngine {
   }
 
   public static async processEpochTick(targetWorldId?: string): Promise<{
+    committed: boolean;
     epoch: number;
     woken_entities: string[];
     events_generated: number;
@@ -51,6 +52,7 @@ export class SchedulerEngine {
   }
 
   private static async processEpochTickUnlocked(worldId: string): Promise<{
+    committed: boolean;
     epoch: number;
     woken_entities: string[];
     events_generated: number;
@@ -171,6 +173,7 @@ export class SchedulerEngine {
     const commitResult = await WorldMutationCoordinator.commitWithCausalPropagation(worldId, proposals);
     if (!commitResult.success) {
       return {
+        committed: false,
         epoch: globalWorld.snapshot.epoch,
         woken_entities: [],
         events_generated: 0,
@@ -179,21 +182,35 @@ export class SchedulerEngine {
       };
     }
 
+    const warnings = [...check7Invariants(
+      globalWorld.snapshot,
+      Array.from(globalWorld.characters.values()),
+      Array.from(globalWorld.seeds.values()),
+      globalWorld.events,
+    ).warnings];
+
+    // The epoch is durable at this boundary. Every following operation is a
+    // sidecar and may only append a warning, never turn this tick into failure.
     // A wake is consumed only after the epoch's authoritative transaction is
     // durable. Crash/retry before this sidecar update is intentionally
     // at-least-once rather than a silent lost wake.
-    await WakeSignalRepository.markConsumed(worldId, [...consumedWakeEntityIds]);
+    try { await WakeSignalRepository.markConsumed(worldId, [...consumedWakeEntityIds]); }
+    catch { warnings.push('Wake cleanup will retry after the committed epoch.'); }
 
-    // Process global timeline up to current epoch in database
-    await GlobalTimeline.processUntil(worldId, commitResult.epoch);
+    try { await GlobalTimeline.processUntil(worldId, commitResult.epoch); }
+    catch { warnings.push('Timeline processing was deferred after the committed epoch.'); }
 
     // AI autonomy is intentionally a post-commit side-effect phase. A failure
     // here must never roll back the deterministic epoch or timeline commit.
     const orderedAutonomyCandidates = NpcAutonomyCoordinator.orderCandidates(autonomyCandidates, commitResult.epoch);
-    for (const deferred of orderedAutonomyCandidates.slice(MAX_NPC_AUTONOMY_DECISIONS_PER_EPOCH)) {
-      await this.pushWakeSignal({ entity_id: deferred.npcId, entity_type: 'CHARACTER', reason: deferred.triggerReason, epoch: deferred.signalEpoch ?? commitResult.epoch, weight: deferred.weight ?? WAKE_WEIGHTS[deferred.triggerReason] ?? 7 }, worldId);
-    }
-    const autonomyResults = await new NpcAutonomyCoordinator().processWakeBatch({ worldId, epoch: commitResult.epoch, candidates: orderedAutonomyCandidates.slice(0, MAX_NPC_AUTONOMY_DECISIONS_PER_EPOCH) });
+    try {
+      for (const deferred of orderedAutonomyCandidates.slice(MAX_NPC_AUTONOMY_DECISIONS_PER_EPOCH)) {
+        await this.pushWakeSignal({ entity_id: deferred.npcId, entity_type: 'CHARACTER', reason: deferred.triggerReason, epoch: deferred.signalEpoch ?? commitResult.epoch, weight: deferred.weight ?? WAKE_WEIGHTS[deferred.triggerReason] ?? 7 }, worldId);
+      }
+    } catch { warnings.push('Deferred NPC wake processing will retry after the committed epoch.'); }
+    let autonomyResults: Awaited<ReturnType<NpcAutonomyCoordinator['processWakeBatch']>> = [];
+    try { autonomyResults = await new NpcAutonomyCoordinator().processWakeBatch({ worldId, epoch: commitResult.epoch, candidates: orderedAutonomyCandidates.slice(0, MAX_NPC_AUTONOMY_DECISIONS_PER_EPOCH) }); }
+    catch { warnings.push('NPC autonomy processing was deferred after the committed epoch.'); }
     const autonomy = {
       attempted: autonomyResults.length,
       committed: autonomyResults.filter(result => result.status === 'COMMITTED').length,
@@ -202,20 +219,13 @@ export class SchedulerEngine {
       failed: autonomyResults.filter(result => result.status === 'FAILED').length,
     };
 
-    // 4. Run safety 7 Invariant Checks
-    const invariantRes = check7Invariants(
-      globalWorld.snapshot,
-      Array.from(globalWorld.characters.values()),
-      Array.from(globalWorld.seeds.values()),
-      globalWorld.events
-    );
-
     return {
+      committed: true,
       epoch: globalWorld.snapshot.epoch,
       woken_entities: wokenEntities,
       events_generated: 0,
       catchup_performed: catchupCount,
-      warnings: invariantRes.warnings,
+      warnings,
       autonomy,
     };
   }

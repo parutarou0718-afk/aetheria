@@ -23,4 +23,16 @@ describe('PlayerRequestRunRepository', () => {
     await PlayerRequestRunRepository.markInProgressUnknown();
     expect(await PlayerRequestRunRepository.claim(unknown)).toMatchObject({ kind: 'UNKNOWN' });
   });
+
+  it('only prunes old terminal rows and preserves unknown request outcomes', async () => {
+    const completed = { worldId, sessionId: 'session-terminal', requestId: crypto.randomUUID(), actionKey: 'TIME_ADVANCE' };
+    const unknown = { worldId, sessionId: 'session-unknown', requestId: crypto.randomUUID(), actionKey: 'TIME_ADVANCE' };
+    await PlayerRequestRunRepository.claim(completed);
+    await PlayerRequestRunRepository.complete(completed, { httpStatus: 200, response: { newEpoch: 2 } });
+    await PlayerRequestRunRepository.claim(unknown);
+    await PlayerRequestRunRepository.markInProgressUnknown();
+    await PlayerRequestRunRepository.pruneTerminal(0, 0);
+    expect(await PlayerRequestRunRepository.claim(completed)).toMatchObject({ kind: 'CLAIMED' });
+    expect(await PlayerRequestRunRepository.claim(unknown)).toMatchObject({ kind: 'UNKNOWN' });
+  });
 });

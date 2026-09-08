@@ -14,6 +14,7 @@ import { setRecorderWriteContext } from '../worldState';
 import { WorldCacheLoader } from '../world/worldCacheLoader';
 import { dbManager } from '../persistence/database';
 import { worldLifecycleLock } from '../world/worldLifecycleLock';
+import { runtimeHealth } from '../runtime/runtimeHealthService';
 
 export interface GenesisResult {
   worldId: string;
@@ -23,6 +24,7 @@ export interface GenesisResult {
   validationReport: ValidationReport;
   repaired: boolean;
   repairChanges: string[];
+  warnings?: string[];
 }
 
 export class WorldGenesisService {
@@ -140,10 +142,17 @@ export class WorldGenesisService {
         }
       });
 
-      // Reload into in-memory globalWorld cache
-      await WorldCacheLoader.loadWorldStateIntoCache(worldId);
     } finally {
       setRecorderWriteContext(false);
+    }
+
+    // The world is durable once the transaction completes. Cache publication is
+    // deliberately post-commit: a reload failure degrades readiness, not truth.
+    const warnings: string[] = [];
+    try { await WorldCacheLoader.loadWorldStateIntoCache(worldId); }
+    catch {
+      runtimeHealth.markCacheUnsynchronized();
+      warnings.push('World creation committed, but the runtime cache is not ready yet.');
     }
 
     return {
@@ -154,6 +163,7 @@ export class WorldGenesisService {
       validationReport,
       repaired,
       repairChanges,
+      warnings: warnings.length ? warnings : undefined,
     };
   }
 }

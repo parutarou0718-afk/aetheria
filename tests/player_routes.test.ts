@@ -90,4 +90,19 @@ describe('player HTTP boundary', () => {
     expect(second.status).toBe(200);
     expect(second.headers.get('x-aetheria-replayed')).toBe('true');
   });
+
+  it('replays a lost logical time-advance response with the same request id exactly once', async () => {
+    const requestId = crypto.randomUUID();
+    const options = { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Aetheria-Request-Id': requestId }, body: '{}' };
+    // The first response represents a connection that reached the server but
+    // whose response was lost before the browser could trust it.
+    const first = await fetch(`${baseUrl}/api/v1/player/time/advance`, options);
+    expect(first.status).toBe(200);
+    expect(globalThis.fetch).toBeDefined();
+    const afterFirst = (await first.json()).newEpoch;
+    const retry = await fetch(`${baseUrl}/api/v1/player/time/advance`, options);
+    expect(retry.status).toBe(200);
+    expect(retry.headers.get('x-aetheria-replayed')).toBe('true');
+    expect((await retry.json()).newEpoch).toBe(afterFirst);
+  });
 });

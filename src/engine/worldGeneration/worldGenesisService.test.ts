@@ -19,6 +19,8 @@ import { WorldCreationRequest } from './worldCreationRequest';
 import { DeterministicIdFactory } from './deterministicIdFactory';
 import { WorldRepository } from '../world/worldRepository';
 import { dbManager } from '../persistence/database';
+import { WorldCacheLoader } from '../world/worldCacheLoader';
+import { runtimeHealth } from '../runtime/runtimeHealthService';
 
 // --- Deterministic offline fixtures (single source of truth for tests) ---
 
@@ -278,6 +280,19 @@ describe('WorldGenesisService Dynamic Creation Engine', () => {
 
     const loadedAxioms = await WorldRepository.getWorldAxioms(worldId);
     expect(loadedAxioms.length).toBeGreaterThanOrEqual(4);
+  }, 30000);
+
+  it('keeps a durably created world when post-commit cache loading fails', async () => {
+    const worldId = `world-cache-failure-${crypto.randomUUID()}`;
+    runtimeHealth.markDatabaseHealthy();
+    runtimeHealth.markBootstrapHealthy();
+    runtimeHealth.markCacheSynchronized();
+    vi.spyOn(WorldCacheLoader, 'loadWorldStateIntoCache').mockRejectedValueOnce(new Error('cache unavailable'));
+    const result = await WorldGenesisService.createDynamicWorld({ worldId, userVision: 'A durable world whose post-commit cache publication is deliberately unavailable.', generationSeed: 3901 });
+    expect(result.warnings).toEqual(expect.arrayContaining([expect.stringContaining('committed')]));
+    expect((await WorldRepository.getWorldSnapshot(worldId))?.world_creation_state).toBe('CREATED');
+    expect(runtimeHealth.isReady()).toBe(false);
+    vi.restoreAllMocks();
   }, 30000);
 
   it('should enforce user required and forbidden concepts in world genesis', async () => {

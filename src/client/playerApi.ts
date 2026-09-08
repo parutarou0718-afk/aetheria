@@ -2,12 +2,36 @@ import type { PlayerBootstrapView, PlayerConversationTurn } from '../application
 
 export class PlayerApiError extends Error { public constructor(public readonly code: string, message: string) { super(message); } }
 function getSessionId(): string { const key = 'aetheria-player-session'; const existing = sessionStorage.getItem(key); if (existing) return existing; const created = crypto.randomUUID(); sessionStorage.setItem(key, created); return created; }
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const requestId = init?.method && init.method !== 'GET' ? { 'X-Aetheria-Request-Id': crypto.randomUUID() } : {};
-  const response = await fetch(path, { ...init, headers: { 'Content-Type': 'application/json', 'X-Aetheria-Session-Id': getSessionId(), ...requestId, ...(init?.headers ?? {}) } });
+const pendingMutationIds = new Map<string, string>();
+
+/** A logical mutation retains its id across transport failures.  The server owns
+ * deduplication; this client helper merely prevents an accidental new id on retry. */
+export async function requestMutation<T>(path: string, init: RequestInit, requestId?: string): Promise<T> {
+  const key = `${init.method ?? 'POST'}:${path}:${typeof init.body === 'string' ? init.body : ''}`;
+  const id = requestId ?? pendingMutationIds.get(key) ?? crypto.randomUUID();
+  pendingMutationIds.set(key, id);
+  let response: Response;
+  try {
+    response = await fetch(path, { ...init, headers: { 'Content-Type': 'application/json', 'X-Aetheria-Session-Id': getSessionId(), 'X-Aetheria-Request-Id': id, ...(init.headers ?? {}) } });
+  } catch (error) {
+    // No trustworthy terminal response: retain this id for an explicit retry.
+    throw error;
+  }
+  // Any HTTP response is terminal from this request's perspective, including a
+  // server rejection. A later player action must intentionally get a new id.
+  pendingMutationIds.delete(key);
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new PlayerApiError(typeof body.code === 'string' ? body.code : 'NETWORK_ERROR', typeof body.error === 'string' ? body.error : 'The request could not be completed.');
   return body as T;
+}
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  if (!init?.method || init.method === 'GET') {
+    const response = await fetch(path, { ...init, headers: { 'Content-Type': 'application/json', 'X-Aetheria-Session-Id': getSessionId(), ...(init?.headers ?? {}) } });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new PlayerApiError(typeof body.code === 'string' ? body.code : 'NETWORK_ERROR', typeof body.error === 'string' ? body.error : 'The request could not be completed.');
+    return body as T;
+  }
+  return requestMutation<T>(path, init);
 }
 export const playerApi = {
   getBootstrap: () => request<PlayerBootstrapView>('/api/v1/player/bootstrap'),

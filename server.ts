@@ -628,7 +628,11 @@ async function startServer() {
   const shutdown = async () => {
     if (stopping) return;
     stopping = true;
-    await new Promise<void>((resolve) => server.close(() => resolve()));
+    const closed = await Promise.race([
+      new Promise<boolean>((resolve) => server.close(() => resolve(true))),
+      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 10_000)),
+    ]);
+    if (!closed) { console.error('[Server] Graceful HTTP shutdown timed out.'); process.exitCode = 1; }
     try { await dbManager.flush(); await dbManager.close(); }
     catch (error) { console.error('[Server] Graceful persistence shutdown failed:', error); process.exitCode = 1; }
   };
