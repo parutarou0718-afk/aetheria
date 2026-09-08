@@ -24,6 +24,7 @@ import { gameApplicationService } from './src/application/gameApplicationService
 import type { GameRequestContext } from './src/application/gameRequestContext';
 import { QuestRepository } from './src/engine/quest/questRepository';
 import { toQuestPublicView } from './src/engine/quest/questPublicView';
+import { registerPlayerRoutes } from './src/server/routes/playerRoutes';
 
 dotenv.config();
 
@@ -49,6 +50,7 @@ export function registerConfigRoutes(app: express.Express): void {
         worldId: globalWorld.snapshot.id,
         purpose: 'DM_ACTION',
       }),
+      devInspectorAvailable: process.env.AETHERIA_DEV_INSPECTOR === 'true',
     });
   });
 }
@@ -182,6 +184,7 @@ async function startServer() {
 
   // 0. API & LLM Provider Configuration
   registerConfigRoutes(app);
+  registerPlayerRoutes(app);
 
   // 1. Get World Snapshot & Overview
   app.get('/api/v1/world/snapshot', (req, res) => {

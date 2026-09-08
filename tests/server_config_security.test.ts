@@ -34,7 +34,7 @@ describe('HTTP LLM configuration secret safety', () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body).toEqual({ aiAvailable: expect.any(Boolean) });
+    expect(body).toEqual({ aiAvailable: expect.any(Boolean), devInspectorAvailable: expect.any(Boolean) });
   });
 
   it('does not expose a runtime configuration write endpoint', async () => {
