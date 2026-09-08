@@ -1,6 +1,7 @@
 import { WorldRepository } from '../world/worldRepository';
 import { TimelineError } from './timelineErrors';
 import { TravelPlanRequest } from './timelineTypes';
+import { CapabilitySnapshotService } from '../capability/capabilitySnapshot';
 
 export class TransactionValidator {
   public static async validateTravelPlanRequest(req: TravelPlanRequest): Promise<void> {
@@ -12,8 +13,13 @@ export class TransactionValidator {
       throw new TimelineError('ACTOR_BUSY', `Actor [${actorId}] does not exist in world [${worldId}]`);
     }
 
-    if (actor.status === 'DEAD' || actor.presence_state === 'DEAD') {
+    const capability = CapabilitySnapshotService.fromCharacter(actor);
+    if (capability.actionState === 'DEAD') {
       throw new TimelineError('ACTOR_DEAD', `Actor [${actorId}] is DEAD and cannot initiate travel`);
+    }
+
+    if (capability.actionState !== 'AVAILABLE') {
+      throw new TimelineError('ACTOR_BUSY', `Actor [${actorId}] is not available to initiate travel`);
     }
 
     // Check if actor is already IN_TRANSIT

@@ -1,6 +1,17 @@
 import type { ProposalV2 } from '../proposal/proposalSchema';
 import type { CapabilityRequirement } from './capabilityTypes';
 export class CapabilityPolicy {
+  static isMechanicalActorOperation(proposal: ProposalV2): boolean {
+    return proposal.operation === 'APPLY_SEMANTIC_EFFECT'
+      || proposal.operation === 'UPDATE_CHARACTER_ATTRIBUTES'
+      || proposal.operation === 'CHANGE_RESOURCE'
+      || proposal.operation === 'CHANGE_RELATIONSHIP'
+      || proposal.operation === 'MOVE_CHARACTER'
+      || proposal.operation === 'SET_CHARACTER_ACTION'
+      || proposal.operation === 'CREATE_WORLD_TRANSACTION'
+      || proposal.operation === 'ACCEPT_QUEST';
+  }
+
   static requirementsFor(proposal: ProposalV2): CapabilityRequirement[] {
     if (proposal.authorityLevel !== 'ACTOR' || !proposal.actorId) return [];
     const active: CapabilityRequirement[] = [{ type: 'ACTIVE_CHARACTER' }];

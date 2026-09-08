@@ -16,6 +16,7 @@ function proposal(overrides: Partial<ProposalV2> = {}): ProposalV2 {
     operation: 'MOVE_CHARACTER',
     entityType: 'CHARACTER',
     entityId: 'pc-player',
+    actorId: 'pc-player',
     payload: { characterId: 'pc-player', targetLocationId: 'loc-dawnfall' },
     effectiveEpoch: 1,
     preconditions: [],
@@ -47,7 +48,7 @@ describe('world rule closure authority alignment', () => {
   it('rejects a dead ACTOR action through the real pipeline without moving the character', async () => {
     await markPlayerDead();
     const result = await new ProposalPipeline().processAndCommit({ worldId, proposals: [proposal()] });
-    expect(result).toMatchObject({ success: false, rejected: [expect.objectContaining({ code: 'PROPOSAL_RULE_VIOLATION', ruleType: 'DEAD_CHARACTER_CANNOT_ACT' })] });
+    expect(result).toMatchObject({ success: false, rejected: [expect.objectContaining({ code: 'PROPOSAL_CAPABILITY_VIOLATION', capabilityReason: 'ACTOR_NOT_ACTIVE' })] });
     expect((await WorldRepository.getCharacter(worldId, 'pc-player'))?.location_id).toBe('loc-tavern');
   });
 

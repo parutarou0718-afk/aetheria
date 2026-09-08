@@ -17,8 +17,8 @@ const CapabilityRequirementSchema: z.ZodType<CapabilityRequirement> = z.lazy(() 
   z.object({ type: z.literal('RESOURCE_MIN'), resource: z.enum(['HP', 'MP', 'GOLD']), minimum: z.number() }),
   z.object({ type: z.literal('PRESENCE'), required: z.literal('AT_LOCATION') }),
   z.object({ type: z.literal('SAME_LOCATION'), targetCharacterId: z.string().min(1) }),
-  z.object({ type: z.literal('ALL'), requirements: z.array(CapabilityRequirementSchema) }),
-  z.object({ type: z.literal('ANY'), requirements: z.array(CapabilityRequirementSchema) }),
+  z.object({ type: z.literal('ALL'), requirements: z.array(CapabilityRequirementSchema).min(1) }),
+  z.object({ type: z.literal('ANY'), requirements: z.array(CapabilityRequirementSchema).min(1) }),
 ]));
 
 export const ProposalSchema = StateChangeProposalSchema.extend({

@@ -120,7 +120,12 @@ export class ProposalPipeline {
       }
       const resolvedProposal = resolution.proposal;
 
-      const capabilityResult = await this.capabilityValidator.validate({ worldId: input.worldId, proposal: resolvedProposal });
+      const capabilityResult = await this.capabilityValidator.validate({
+        worldId: input.worldId,
+        proposal: resolvedProposal,
+        // This value is invocation-local and cannot be supplied through a proposal payload.
+        originatedFromSemanticResolution: parsed.data.operation === 'APPLY_SEMANTIC_EFFECT',
+      });
       if (!capabilityResult.valid) {
         for (const violation of capabilityResult.violations) rejected.push({ proposalId: proposal.id, code: 'PROPOSAL_CAPABILITY_VIOLATION', message: 'The action is not currently feasible.', capabilityReason: violation.code, actorId: violation.actorId, targetId: violation.targetId, requirementType: violation.requirementType });
         continue;

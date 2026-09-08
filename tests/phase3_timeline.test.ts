@@ -34,6 +34,23 @@ describe('Phase 3 Timeline Integration Suite', () => {
     ).rejects.toThrowError(TimelineError);
   });
 
+  it.each([
+    ['INCAPACITATED', 'AT_LOCATION'],
+    ['MISSING', 'AT_LOCATION'],
+  ] as const)('rejects %s travel initiation even with a valid route', async (status, presenceState) => {
+    const actor = (await WorldRepository.getCharacter(testWorldId, 'pc-player'))!;
+    actor.status = status;
+    actor.presence_state = presenceState;
+    actor.location_id = 'loc-tavern';
+    await WorldRepository.saveCharacter(testWorldId, actor);
+
+    await expect(TransactionService.planTravel({
+      worldId: testWorldId, actorId: actor.id, destinationLocationId: 'loc-ruins', startEpoch: 1,
+    })).rejects.toThrowError(TimelineError);
+    expect(await WorldRepository.getTransactionsForActor(testWorldId, actor.id)).toEqual([]);
+    expect(await WorldRepository.getCharacter(testWorldId, actor.id)).toMatchObject({ presence_state: 'AT_LOCATION', location_id: 'loc-tavern' });
+  });
+
   it('2. Travel Initialization: sets IN_TRANSIT, clears location_id, sets transaction and last_valid_location_id', async () => {
     const travelResult = await TransactionService.planTravel({
       worldId: testWorldId,

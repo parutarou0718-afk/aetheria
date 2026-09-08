@@ -12,6 +12,11 @@ describe('Proposal v2 schema', () => {
     expect(ProposalSchema.safeParse({ ...valid, causalBasis: [{ type: 'BAD' }] }).success).toBe(false);
   });
 
+  it('rejects empty composite capability requirements', () => {
+    expect(ProposalSchema.safeParse({ ...valid, capabilityRequirements: [{ type: 'ANY', requirements: [] }] }).success).toBe(false);
+    expect(ProposalSchema.safeParse({ ...valid, capabilityRequirements: [{ type: 'ALL', requirements: [] }] }).success).toBe(false);
+  });
+
   it('preserves v2 metadata on the backward-compatible StateChangeProposal schema', () => {
     const parsed = StateChangeProposalSchema.parse(valid);
     expect(parsed).toMatchObject({

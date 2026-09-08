@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ProposalPipeline, type CausalValidator, type RuleValidator } from '../src/engine/proposal/proposalPipeline';
 import { PreconditionEvaluator } from '../src/engine/recorder/validators';
 
-const proposal: any = { id: 'p1', operation: 'UPDATE_CHARACTER', entityType: 'CHARACTER', payload: {}, effectiveEpoch: 1, preconditions: [], source: { type: 'LLM' }, reason: 'r', causalBasis: [{ type: 'PLAYER_ACTION' }], authorityLevel: 'ACTOR' };
+const proposal: any = { id: 'p1', operation: 'UPDATE_CHARACTER', entityType: 'CHARACTER', payload: {}, effectiveEpoch: 1, preconditions: [], source: { type: 'SYSTEM' }, reason: 'r', causalBasis: [{ type: 'SYSTEM_EVENT', description: 'Pipeline test fixture.' }], authorityLevel: 'SYSTEM' };
 const rules: RuleValidator = { validate: vi.fn().mockResolvedValue({ valid: true, violations: [] }) };
 const causal: CausalValidator = { validate: vi.fn().mockResolvedValue({ valid: true, violations: [] }) };
 describe('ProposalPipeline', () => {

@@ -3,7 +3,7 @@ import { ProposalPipeline, type RuleValidator } from '../src/engine/proposal/pro
 import type { ProposalV2 } from '../src/engine/proposal/proposalSchema';
 
 const semantic = (overrides: Partial<ProposalV2> = {}): ProposalV2 => ({
-  id: 'semantic-pipeline', operation: 'APPLY_SEMANTIC_EFFECT', entityType: 'CHARACTER', entityId: 'pc-player', payload: {}, effectiveEpoch: 1, preconditions: [], source: { type: 'LLM' }, reason: 'Resolve damage.', causalBasis: [{ type: 'PLAYER_ACTION', description: 'The player attacks.' }], authorityLevel: 'ACTOR', semanticEffect: { type: 'DAMAGE', magnitude: 'MEDIUM', resource: 'HP', targetEntityId: 'pc-player' }, ...overrides,
+  id: 'semantic-pipeline', operation: 'APPLY_SEMANTIC_EFFECT', entityType: 'CHARACTER', entityId: 'pc-player', payload: {}, effectiveEpoch: 1, preconditions: [], source: { type: 'SYSTEM' }, reason: 'Resolve damage.', causalBasis: [{ type: 'SYSTEM_EVENT', description: 'A deterministic system effect occurred.' }], authorityLevel: 'SYSTEM', semanticEffect: { type: 'DAMAGE', magnitude: 'MEDIUM', resource: 'HP', targetEntityId: 'pc-player' }, ...overrides,
 });
 const target = () => ({ commit: vi.fn().mockResolvedValue({ success: true, errors: [], committedCount: 1, appliedProposalIds: [], proposalResults: [], eventsGenerated: [], epoch: 1 }) });
 const causal = (valid = true) => ({ validate: vi.fn().mockResolvedValue(valid ? { valid: true, violations: [] } : { valid: false, violations: [{ basisType: 'FACT', basisId: 'missing', reason: 'NOT_FOUND', message: 'Missing.' }] }) });

@@ -101,7 +101,7 @@ describe('semantic actor identity', () => {
     expect((await WorldRepository.getCharacter(worldId, 'npc-elder'))!.attributes.hp).toBe(before - 15);
   });
 
-  it('keeps legacy actor proposals without actorId on the existing dead-entity fallback', async () => {
+  it('rejects legacy mechanical ACTOR proposals without an actorId', async () => {
     await setStatus('pc-player', 'DEAD');
     const result = await new ProposalPipeline().processAndCommit({
       worldId,
@@ -115,7 +115,7 @@ describe('semantic actor identity', () => {
 
     expect(result).toMatchObject({
       success: false,
-      rejected: [expect.objectContaining({ code: 'PROPOSAL_RULE_VIOLATION', ruleType: 'DEAD_CHARACTER_CANNOT_ACT' })],
+      rejected: [expect.objectContaining({ code: 'PROPOSAL_CAPABILITY_VIOLATION', capabilityReason: 'ACTOR_ID_REQUIRED' })],
     });
   });
 });

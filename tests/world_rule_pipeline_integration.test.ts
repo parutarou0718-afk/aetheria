@@ -13,6 +13,7 @@ function proposal(overrides: Partial<ProposalV2> = {}): ProposalV2 {
     operation: 'MOVE_CHARACTER',
     entityType: 'CHARACTER',
     entityId: 'pc-player',
+    actorId: 'pc-player',
     payload: { characterId: 'pc-player', targetLocationId: 'loc-dawnfall' },
     effectiveEpoch: 1,
     preconditions: [],
@@ -54,7 +55,7 @@ describe('default world rules in the proposal pipeline', () => {
     const target = committer();
     const result = await new ProposalPipeline(target).processAndCommit({
       worldId,
-      proposals: [proposal({ operation: 'UPDATE_CHARACTER', entityId: 'missing-character', payload: { characterId: 'missing-character', name: 'Nobody' } })],
+      proposals: [proposal({ operation: 'UPDATE_CHARACTER', entityId: 'missing-character', payload: { characterId: 'missing-character', name: 'Nobody' }, authorityLevel: 'SYSTEM' })],
     });
     expect(result.rejected).toEqual([expect.objectContaining({ code: 'PROPOSAL_RULE_VIOLATION', ruleType: 'ENTITY_MUST_EXIST' })]);
     expect(target.commit).not.toHaveBeenCalled();
@@ -72,7 +73,7 @@ describe('default world rules in the proposal pipeline', () => {
 
     const target = committer();
     const result = await new ProposalPipeline(target).processAndCommit({ worldId, proposals: [proposal()] });
-    expect(result.rejected).toEqual([expect.objectContaining({ ruleType: 'DEAD_CHARACTER_CANNOT_ACT' })]);
+    expect(result.rejected).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'PROPOSAL_CAPABILITY_VIOLATION', capabilityReason: 'ACTOR_NOT_ACTIVE' })]));
     expect(target.commit).not.toHaveBeenCalled();
   });
 
@@ -131,6 +132,7 @@ describe('default world rules in the proposal pipeline', () => {
       proposals: [proposal({
         operation: 'APPLY_SEMANTIC_EFFECT',
         payload: {},
+        authorityLevel: 'SYSTEM',
         semanticEffect: { type: 'RESOURCE_COST', magnitude: 'HEAVY', resource: 'GOLD', targetEntityId: 'pc-player' },
       })],
     });
