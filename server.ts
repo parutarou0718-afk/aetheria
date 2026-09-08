@@ -94,7 +94,7 @@ export function registerCharacterActionRoutes(app: express.Express): void {
           return;
         }
 
-        SchedulerEngine.pushWakeSignal({
+        await SchedulerEngine.pushWakeSignal({
           entity_id: char.id,
           entity_type: 'CHARACTER',
           reason: 'PLAYER_APPROACH',

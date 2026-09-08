@@ -6,6 +6,31 @@ const proposal: any = { id: 'p1', operation: 'UPDATE_CHARACTER', entityType: 'CH
 const rules: RuleValidator = { validate: vi.fn().mockResolvedValue({ valid: true, violations: [] }) };
 const causal: CausalValidator = { validate: vi.fn().mockResolvedValue({ valid: true, violations: [] }) };
 describe('ProposalPipeline', () => {
+  it('serializes validation-to-commit for concurrent invocations of the same world', async () => {
+    let releaseFirstCommit!: () => void;
+    const firstCommitStarted = new Promise<void>((resolve) => { releaseFirstCommit = resolve; });
+    let allowFirstCommit!: () => void;
+    const holdFirstCommit = new Promise<void>((resolve) => { allowFirstCommit = resolve; });
+    const commit = vi.fn(async () => {
+      if (commit.mock.calls.length === 1) {
+        releaseFirstCommit();
+        await holdFirstCommit;
+      }
+      return { success: true, errors: [] };
+    });
+    const pipeline = new ProposalPipeline({ commit } as any, rules, causal);
+
+    const first = pipeline.processAndCommit({ worldId: 'serialized-world', proposals: [{ ...proposal, id: 'first' }] });
+    await firstCommitStarted;
+    const second = pipeline.processAndCommit({ worldId: 'serialized-world', proposals: [{ ...proposal, id: 'second' }] });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(commit).toHaveBeenCalledTimes(1);
+
+    allowFirstCommit();
+    await Promise.all([first, second]);
+    expect(commit).toHaveBeenCalledTimes(2);
+  });
+
   it('exposes processAndCommit as the runtime pipeline entry point', async () => {
     const commit = vi.fn().mockResolvedValue({ success: true });
     const pipeline = new ProposalPipeline({ commit } as any, rules, causal);

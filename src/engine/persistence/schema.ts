@@ -429,4 +429,20 @@ CREATE TABLE IF NOT EXISTS npc_autonomy_runs (
   UNIQUE(world_id, npc_id, epoch)
 );
 CREATE INDEX IF NOT EXISTS idx_npc_autonomy_runs_world_epoch ON npc_autonomy_runs(world_id, epoch DESC);
+
+CREATE TABLE IF NOT EXISTS scheduler_wake_signals (
+  id TEXT PRIMARY KEY,
+  world_id TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  signal_epoch INTEGER NOT NULL,
+  weight INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'PENDING',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY(world_id) REFERENCES worlds(id) ON DELETE CASCADE,
+  UNIQUE(world_id, entity_id)
+);
+CREATE INDEX IF NOT EXISTS idx_scheduler_wake_pending ON scheduler_wake_signals(world_id, status, weight, signal_epoch);
 `;

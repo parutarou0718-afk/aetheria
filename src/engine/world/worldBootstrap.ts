@@ -2,6 +2,15 @@ import { dbManager } from '../persistence/database';
 import { WorldRepository } from './worldRepository';
 import { globalWorld, setRecorderWriteContext } from '../worldState';
 
+export class WorldBootstrapIntegrityError extends Error {
+  public readonly code = 'WORLD_BOOTSTRAP_INTEGRITY_ERROR';
+
+  constructor(message: string) {
+    super(message);
+    this.name = 'WorldBootstrapIntegrityError';
+  }
+}
+
 export class WorldBootstrap {
   public static async bootstrap(worldId = 'world-snapshot-001'): Promise<void> {
     await dbManager.initialize();
@@ -9,7 +18,7 @@ export class WorldBootstrap {
     const existingSnapshot = await WorldRepository.getWorldSnapshot(worldId);
     const chars = existingSnapshot ? await WorldRepository.getAllCharacters(worldId) : [];
 
-    if (!existingSnapshot || chars.length === 0) {
+    if (!existingSnapshot) {
       console.log(`[WorldBootstrap] No persistent world or empty characters found for ${worldId}. Initializing an EMPTY awaiting-genesis world (UNSELECTED)...`);
       setRecorderWriteContext(true);
       try {
@@ -20,7 +29,19 @@ export class WorldBootstrap {
       }
       await this.saveAllToDatabase(worldId);
       console.log(`[WorldBootstrap] Empty world ${worldId} initialized and persisted to SQLite. world_creation_state=UNSELECTED.`);
+    } else if (existingSnapshot.world_creation_state === 'UNSELECTED') {
+      await this.loadFromDatabase(worldId);
+      setRecorderWriteContext(true);
+      try {
+        globalWorld.snapshot.id = worldId;
+      } finally {
+        setRecorderWriteContext(false);
+      }
     } else {
+      const playerCharacter = chars.find((character) => character.type === 'PC');
+      if (!playerCharacter) {
+        throw new WorldBootstrapIntegrityError(`Persisted CREATED world ${worldId} has no player character.`);
+      }
       console.log(`[WorldBootstrap] Loading persistent world ${worldId} (Epoch ${existingSnapshot.epoch}) from SQLite...`);
       await this.loadFromDatabase(worldId);
       setRecorderWriteContext(true);

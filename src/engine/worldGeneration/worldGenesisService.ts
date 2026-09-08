@@ -13,6 +13,7 @@ import { WorldSnapshot } from '../../types';
 import { setRecorderWriteContext } from '../worldState';
 import { WorldCacheLoader } from '../world/worldCacheLoader';
 import { dbManager } from '../persistence/database';
+import { worldLifecycleLock } from '../world/worldLifecycleLock';
 
 export interface GenesisResult {
   worldId: string;
@@ -26,6 +27,10 @@ export interface GenesisResult {
 
 export class WorldGenesisService {
   public static async createDynamicWorld(request: WorldCreationRequest): Promise<GenesisResult> {
+    return worldLifecycleLock.runExclusive(request.worldId, 'GENESIS', () => this.createDynamicWorldUnlocked(request));
+  }
+
+  private static async createDynamicWorldUnlocked(request: WorldCreationRequest): Promise<GenesisResult> {
     // Step 1: Request Validation
     const reqValidation = validateWorldCreationRequest(request);
     if (!reqValidation.valid) {

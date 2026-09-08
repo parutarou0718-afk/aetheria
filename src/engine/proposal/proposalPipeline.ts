@@ -14,6 +14,7 @@ import { CapabilityValidator } from '../capability/capabilityValidator';
 import { ObservedHistoryValidator } from '../history/observedHistoryValidator';
 import type { HistoryConflict } from '../history/observedHistoryTypes';
 import { ProposalSchema, type ProposalV2 } from './proposalSchema';
+import { worldMutationLock, type WorldMutationLock } from '../world/worldMutationLock';
 
 export interface ProposalPipelineInput {
   worldId: string;
@@ -84,9 +85,14 @@ export class ProposalPipeline {
     private readonly parameterResolver = new ParameterResolver(),
     private readonly historyValidator: HistoryValidator = new ObservedHistoryValidator(),
     private readonly capabilityValidator = new CapabilityValidator(),
+    private readonly mutationLock: WorldMutationLock = worldMutationLock,
   ) {}
 
   async processAndCommit(input: ProposalPipelineInput): Promise<ProposalPipelineResult> {
+    return this.mutationLock.runExclusive(input.worldId, () => this.processInsideLock(input));
+  }
+
+  private async processInsideLock(input: ProposalPipelineInput): Promise<ProposalPipelineResult> {
     const rejected: ProposalRejection[] = [];
     const accepted: ProposalV2[] = [];
 

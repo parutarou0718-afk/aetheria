@@ -192,7 +192,7 @@ describe('bounded NPC autonomy runtime', () => {
     const npc = globalWorld.characters.get('npc-elder')!;
     setRecorderWriteContext(true); try { npc.current_action.estimated_end_epoch = 1; npc.frozen = true; } finally { setRecorderWriteContext(false); }
     await WorldRepository.saveCharacter(globalWorld.snapshot.id, npc);
-    SchedulerEngine.pushWakeSignal({ entity_id: npc.id, entity_type: 'CHARACTER', reason: 'PERIODIC_REFRESH', epoch: 1, weight: 0 });
+    await SchedulerEngine.pushWakeSignal({ entity_id: npc.id, entity_type: 'CHARACTER', reason: 'PERIODIC_REFRESH', epoch: 1, weight: 0 });
     const result = await SchedulerEngine.processEpochTick(globalWorld.snapshot.id);
     expect(result.epoch).toBe(2);
     expect(result.autonomy).toMatchObject({ attempted: 1, skipped: 1, committed: 0 });
@@ -205,7 +205,7 @@ describe('bounded NPC autonomy runtime', () => {
     setRecorderWriteContext(true); try { npc.current_action.estimated_end_epoch = 1; npc.frozen = true; pc.location_id = npc.location_id; } finally { setRecorderWriteContext(false); }
     await WorldRepository.saveCharacter(globalWorld.snapshot.id, npc);
     await WorldRepository.saveCharacter(globalWorld.snapshot.id, pc);
-    SchedulerEngine.pushWakeSignal({ entity_id: npc.id, entity_type: 'CHARACTER', reason: 'DEADLINE', epoch: 1, weight: 0 });
+    await SchedulerEngine.pushWakeSignal({ entity_id: npc.id, entity_type: 'CHARACTER', reason: 'DEADLINE', epoch: 1, weight: 0 });
     await SchedulerEngine.processEpochTick(globalWorld.snapshot.id);
     expect(await NpcAutonomyRunRepository.getRun(globalWorld.snapshot.id, npc.id, 2)).toMatchObject({ triggerReason: 'DEADLINE' });
   });
@@ -218,9 +218,10 @@ describe('bounded NPC autonomy runtime', () => {
       for (const id of npcIds) globalWorld.characters.set(id, { ...JSON.parse(JSON.stringify(base)), id, name: id, frozen: true, current_action: { ...base.current_action, estimated_end_epoch: 1 } });
     } finally { setRecorderWriteContext(false); }
     for (const id of npcIds) await WorldRepository.saveCharacter(globalWorld.snapshot.id, globalWorld.characters.get(id)!);
-    for (const id of npcIds) SchedulerEngine.pushWakeSignal({ entity_id: id, entity_type: 'CHARACTER', reason: 'PERIODIC_REFRESH', epoch: 1, weight: 0 });
+    for (const id of npcIds) await SchedulerEngine.pushWakeSignal({ entity_id: id, entity_type: 'CHARACTER', reason: 'PERIODIC_REFRESH', epoch: 1, weight: 0 });
     const result = await SchedulerEngine.processEpochTick(globalWorld.snapshot.id);
     expect(result.autonomy?.attempted).toBe(3);
-    expect(globalWorld.wakeQueue.map(signal => signal.entity_id).sort()).toEqual(npcIds.slice(3).sort());
+    const { WakeSignalRepository } = await import('../src/engine/scheduler/wakeSignalRepository');
+    expect((await WakeSignalRepository.listPendingOrdered(globalWorld.snapshot.id)).map(signal => signal.entityId).sort()).toEqual(npcIds.slice(3).sort());
   });
 });

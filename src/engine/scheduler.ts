@@ -6,6 +6,7 @@ import { StateChangeProposal } from './recorder/changeSchemas';
 import { GlobalTimeline } from './timeline/globalTimeline';
 import { NpcAutonomyCoordinator, type NpcAutonomyCandidate } from './autonomy/npcAutonomyCoordinator';
 import { MAX_NPC_AUTONOMY_DECISIONS_PER_EPOCH } from './autonomy/npcAutonomyTypes';
+import { WakeSignalRepository } from './scheduler/wakeSignalRepository';
 
 export const WAKE_WEIGHTS: Record<string, number> = {
   PLAYER_APPROACH: 0,
@@ -30,11 +31,9 @@ export const WAKE_COSTS: Record<string, number> = {
 };
 
 export class SchedulerEngine {
-  public static pushWakeSignal(signal: WakeSignal) {
+  public static async pushWakeSignal(signal: WakeSignal, targetWorldId = globalWorld.snapshot.id): Promise<void> {
     signal.weight = WAKE_WEIGHTS[signal.reason] ?? 7;
-    globalWorld.wakeQueue = globalWorld.wakeQueue.filter((s) => s.entity_id !== signal.entity_id);
-    globalWorld.wakeQueue.push(signal);
-    globalWorld.wakeQueue.sort((a, b) => a.weight - b.weight);
+    await WakeSignalRepository.enqueue({ worldId: targetWorldId, entityId: signal.entity_id, entityType: signal.entity_type, reason: signal.reason, signalEpoch: signal.epoch, weight: signal.weight });
   }
 
   public static async processEpochTick(targetWorldId?: string): Promise<{
@@ -68,14 +67,15 @@ export class SchedulerEngine {
     // 1. Resolve and Allocate Wake Signals
     const budget = 1000;
     let allocatedBudget = 0;
-    const signalsToProcess = [...globalWorld.wakeQueue];
-    globalWorld.wakeQueue = [];
+    const signalsToProcess = await WakeSignalRepository.listPendingOrdered(worldId);
+    const consumedWakeEntityIds = new Set<string>();
 
     for (const signal of signalsToProcess) {
       const cost = WAKE_COSTS[signal.reason] ?? 20;
       if (allocatedBudget + cost <= budget) {
         allocatedBudget += cost;
-        const char = globalWorld.characters.get(signal.entity_id);
+        consumedWakeEntityIds.add(signal.entityId);
+        const char = globalWorld.characters.get(signal.entityId);
         if (char && char.status !== 'DEAD') {
           const elapsed = targetEpoch - char.last_simulated_epoch;
           if (elapsed > 1) {
@@ -99,10 +99,8 @@ export class SchedulerEngine {
           });
           wokenEntities.push(char.name);
           allocatedWakeEntityIds.add(char.id);
-          if (char.type === 'NPC') autonomyCandidates.push({ npcId: char.id, triggerReason: signal.reason, weight: signal.weight, signalEpoch: signal.epoch });
+          if (char.type === 'NPC') autonomyCandidates.push({ npcId: char.id, triggerReason: signal.reason, weight: signal.weight, signalEpoch: signal.signalEpoch });
         }
-      } else {
-        globalWorld.wakeQueue.push(signal);
       }
     }
 
@@ -168,6 +166,11 @@ export class SchedulerEngine {
       };
     }
 
+    // A wake is consumed only after the epoch's authoritative transaction is
+    // durable. Crash/retry before this sidecar update is intentionally
+    // at-least-once rather than a silent lost wake.
+    await WakeSignalRepository.markConsumed(worldId, [...consumedWakeEntityIds]);
+
     // Process global timeline up to current epoch in database
     await GlobalTimeline.processUntil(worldId, commitResult.epoch);
 
@@ -175,7 +178,7 @@ export class SchedulerEngine {
     // here must never roll back the deterministic epoch or timeline commit.
     const orderedAutonomyCandidates = NpcAutonomyCoordinator.orderCandidates(autonomyCandidates, commitResult.epoch);
     for (const deferred of orderedAutonomyCandidates.slice(MAX_NPC_AUTONOMY_DECISIONS_PER_EPOCH)) {
-      this.pushWakeSignal({ entity_id: deferred.npcId, entity_type: 'CHARACTER', reason: deferred.triggerReason, epoch: deferred.signalEpoch ?? commitResult.epoch, weight: deferred.weight ?? WAKE_WEIGHTS[deferred.triggerReason] ?? 7 });
+      await this.pushWakeSignal({ entity_id: deferred.npcId, entity_type: 'CHARACTER', reason: deferred.triggerReason, epoch: deferred.signalEpoch ?? commitResult.epoch, weight: deferred.weight ?? WAKE_WEIGHTS[deferred.triggerReason] ?? 7 }, worldId);
     }
     const autonomyResults = await new NpcAutonomyCoordinator().processWakeBatch({ worldId, epoch: commitResult.epoch, candidates: orderedAutonomyCandidates.slice(0, MAX_NPC_AUTONOMY_DECISIONS_PER_EPOCH) });
     const autonomy = {
