@@ -236,6 +236,7 @@ export class WorldRepository {
       'quests',
       'interaction_turns',
       'memory_episodes',
+      'npc_autonomy_runs',
       'characters',
       'locations',
       'location_edges',

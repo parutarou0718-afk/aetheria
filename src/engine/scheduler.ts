@@ -4,6 +4,8 @@ import { check7Invariants } from './invariants';
 import { WorldMutationCoordinator } from './world/worldMutationCoordinator';
 import { StateChangeProposal } from './recorder/changeSchemas';
 import { GlobalTimeline } from './timeline/globalTimeline';
+import { NpcAutonomyCoordinator, type NpcAutonomyCandidate } from './autonomy/npcAutonomyCoordinator';
+import { MAX_NPC_AUTONOMY_DECISIONS_PER_EPOCH } from './autonomy/npcAutonomyTypes';
 
 export const WAKE_WEIGHTS: Record<string, number> = {
   PLAYER_APPROACH: 0,
@@ -41,6 +43,7 @@ export class SchedulerEngine {
     events_generated: number;
     catchup_performed: number;
     warnings: string[];
+    autonomy?: { attempted: number; committed: number; rejected: number; skipped: number; failed: number };
   }> {
     const worldId = targetWorldId || globalWorld.snapshot.id || 'world-snapshot-001';
     const proposals: StateChangeProposal[] = [];
@@ -58,6 +61,7 @@ export class SchedulerEngine {
     });
 
     const wokenEntities: string[] = [];
+    const autonomyCandidates: NpcAutonomyCandidate[] = [];
     let catchupCount = 0;
 
     // 1. Resolve and Allocate Wake Signals
@@ -93,6 +97,7 @@ export class SchedulerEngine {
             source: { type: 'SCHEDULER' },
           });
           wokenEntities.push(char.name);
+          if (char.type === 'NPC') autonomyCandidates.push({ npcId: char.id, triggerReason: signal.reason, weight: signal.weight, signalEpoch: signal.epoch });
         }
       } else {
         globalWorld.wakeQueue.push(signal);
@@ -128,6 +133,7 @@ export class SchedulerEngine {
             if (!wokenEntities.includes(char.name)) {
               wokenEntities.push(char.name);
             }
+            if (char.type === 'NPC') autonomyCandidates.push({ npcId: char.id, triggerReason: 'PLAYER_APPROACH', weight: WAKE_WEIGHTS.PLAYER_APPROACH, signalEpoch: targetEpoch });
           }
         } else if (char.type !== 'PC' && char.status !== 'DEAD' && char.location_id !== pc.location_id) {
           proposals.push({
@@ -163,6 +169,21 @@ export class SchedulerEngine {
     // Process global timeline up to current epoch in database
     await GlobalTimeline.processUntil(worldId, commitResult.epoch);
 
+    // AI autonomy is intentionally a post-commit side-effect phase. A failure
+    // here must never roll back the deterministic epoch or timeline commit.
+    const orderedAutonomyCandidates = NpcAutonomyCoordinator.orderCandidates(autonomyCandidates, commitResult.epoch);
+    for (const deferred of orderedAutonomyCandidates.slice(MAX_NPC_AUTONOMY_DECISIONS_PER_EPOCH)) {
+      this.pushWakeSignal({ entity_id: deferred.npcId, entity_type: 'CHARACTER', reason: deferred.triggerReason, epoch: deferred.signalEpoch ?? commitResult.epoch, weight: deferred.weight ?? WAKE_WEIGHTS[deferred.triggerReason] ?? 7 });
+    }
+    const autonomyResults = await new NpcAutonomyCoordinator().processWakeBatch({ worldId, epoch: commitResult.epoch, candidates: orderedAutonomyCandidates.slice(0, MAX_NPC_AUTONOMY_DECISIONS_PER_EPOCH) });
+    const autonomy = {
+      attempted: autonomyResults.length,
+      committed: autonomyResults.filter(result => result.status === 'COMMITTED').length,
+      rejected: autonomyResults.filter(result => result.status === 'REJECTED').length,
+      skipped: autonomyResults.filter(result => result.status === 'SKIPPED').length,
+      failed: autonomyResults.filter(result => result.status === 'FAILED').length,
+    };
+
     // 4. Run safety 7 Invariant Checks
     const invariantRes = check7Invariants(
       globalWorld.snapshot,
@@ -177,6 +198,7 @@ export class SchedulerEngine {
       events_generated: 0,
       catchup_performed: catchupCount,
       warnings: invariantRes.warnings,
+      autonomy,
     };
   }
 

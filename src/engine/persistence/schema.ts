@@ -411,4 +411,22 @@ CREATE TABLE IF NOT EXISTS memory_episodes (
 );
 CREATE INDEX IF NOT EXISTS idx_memory_episodes_observer_epoch ON memory_episodes(world_id, observer_type, observer_id, epoch);
 CREATE INDEX IF NOT EXISTS idx_memory_episodes_observer_location ON memory_episodes(world_id, observer_type, observer_id, location_id);
+
+CREATE TABLE IF NOT EXISTS npc_autonomy_runs (
+  id TEXT PRIMARY KEY,
+  world_id TEXT NOT NULL,
+  npc_id TEXT NOT NULL,
+  epoch INTEGER NOT NULL,
+  trigger_reason TEXT NOT NULL,
+  status TEXT NOT NULL,
+  intent_action TEXT,
+  intent_summary TEXT,
+  proposal_ids_json TEXT,
+  error_code TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY(world_id) REFERENCES worlds(id) ON DELETE CASCADE,
+  UNIQUE(world_id, npc_id, epoch)
+);
+CREATE INDEX IF NOT EXISTS idx_npc_autonomy_runs_world_epoch ON npc_autonomy_runs(world_id, epoch DESC);
 `;

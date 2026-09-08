@@ -9,11 +9,13 @@ export function toDmCharacterView(character: Character) {
     presenceState: character.presence_state, locationId: character.location_id, attributes: character.attributes,
     skills: character.skills, resources: character.resources, inventory: character.inventory, currentAction: character.current_action };
 }
-export function toNpcSelfView(character: Character, playerId: string) {
+export function toNpcSelfBaseView(character: Character) {
   return { id: character.id, name: character.name, title: character.title, species: character.species,
     status: character.status, locationId: character.location_id, personality: character.personality,
-    fear: character.fear, goal: character.goal, currentAction: character.current_action,
-    relationshipWithPlayer: character.relationships.filter(relationship => relationship.target_id === playerId) };
+    fear: character.fear, goal: character.goal, currentAction: character.current_action };
+}
+export function toNpcSelfView(character: Character, playerId: string) {
+  return { ...toNpcSelfBaseView(character), relationshipWithPlayer: character.relationships.filter(relationship => relationship.target_id === playerId) };
 }
 export function toNpcObservedCharacterView(character: Character) {
   return { id: character.id, name: character.name, title: character.title, status: character.status, presenceState: character.presence_state };

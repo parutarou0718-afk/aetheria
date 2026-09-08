@@ -8,7 +8,8 @@ import { MemoryRetrievalService } from './memoryRetrievalService';
 import { ContextBudgeter } from './contextBudgeter';
 import { DefaultWorldRuleRepository } from '../constraints/rules/worldRuleRepository';
 import { CapabilitySnapshotService } from '../capability/capabilitySnapshot';
-import { toContextInteractionTurn, toContextLocationView, toContextMemoryEpisode, toContextRuleView, toDmCharacterView, toNarratorHiddenTruthView, toNpcObservedCharacterView, toNpcSelfView } from './contextViews';
+import { NpcMobilityService } from '../autonomy/npcMobilityService';
+import { toContextInteractionTurn, toContextLocationView, toContextMemoryEpisode, toContextRuleView, toDmCharacterView, toNarratorHiddenTruthView, toNpcObservedCharacterView, toNpcSelfBaseView, toNpcSelfView } from './contextViews';
 
 export class ContextAssembler {
   static async assemble(request: ContextRequest): Promise<ContextPacket> {
@@ -28,13 +29,17 @@ export class ContextAssembler {
     if (policy.includeWorldAxioms) packet.world.axioms = (await WorldRepository.getWorldAxioms(request.worldId)).map(axiom => ({ statement: axiom.statement, immutable: axiom.immutable }));
     if (policy.includeWorldRules) packet.world.rules = (await new DefaultWorldRuleRepository().getEnabledRules(request.worldId)).map(toContextRuleView);
     if (actor && policy.includeActorPrivateState) packet.actor = { ...toDmCharacterView(actor), capability: CapabilitySnapshotService.fromCharacter(actor) };
-    if (npc) packet.actor = { ...toNpcSelfView(npc, request.actorId), capability: CapabilitySnapshotService.fromCharacter(npc) };
+    if (npc) packet.actor = request.purpose === 'NPC_AUTONOMOUS_ACTION'
+      ? { ...toNpcSelfBaseView(npc), capability: CapabilitySnapshotService.fromCharacter(npc) }
+      : { ...toNpcSelfView(npc, request.actorId), capability: CapabilitySnapshotService.fromCharacter(npc) };
     if (policy.includeScene) {
       const present = location ? (await WorldRepository.getAllCharacters(request.worldId)).filter(character => character.location_id === location.id) : [];
       packet.scene = { location: location ? toContextLocationView(location) : undefined, characters: present.map(character => toNpcObservedCharacterView(character)) };
     }
     if (policy.includeQuests) {
-      const quests = policy.observerScope === 'NPC' && request.npcId
+      const quests = request.purpose === 'NPC_AUTONOMOUS_ACTION' && request.npcId
+        ? [...await QuestRepository.listActiveByAssignee(request.worldId, request.npcId), ...await QuestRepository.listAvailableByGiver(request.worldId, request.npcId)]
+        : policy.observerScope === 'NPC' && request.npcId
         ? [...await QuestRepository.listAvailableByGiver(request.worldId, request.npcId), ...(await QuestRepository.listActiveByAssignee(request.worldId, request.actorId)).filter(q => q.giver_character_id === request.npcId)]
         : await QuestRepository.listActiveByAssignee(request.worldId, request.actorId);
       packet.quests = quests.slice(0, policy.limits.quests).map(q => ({ id: q.id, title: q.title, description: q.description, status: q.status, objectiveDescription: q.objective.description }));
@@ -67,6 +72,9 @@ export class ContextAssembler {
       const ranked = truths.filter(truth => truth.revealed_to_ids.includes(request.actorId) || relevantIds.has(truth.true_owner_id) || terms.some(term => term.length > 2 && `${truth.title} ${truth.true_nature} ${truth.true_goal ?? ''}`.toLowerCase().includes(term)))
         .sort((a, b) => a.id.localeCompare(b.id)).slice(0, policy.limits.hiddenTruths);
       packet.narratorPrivate = { hiddenTruths: ranked.map(toNarratorHiddenTruthView) };
+    }
+    if (request.purpose === 'NPC_AUTONOMOUS_ACTION' && npc) {
+      packet.autonomy = { triggerReason: request.userInput, allowedActions: ['WAIT', 'SET_ACTIVITY', 'MOVE'], moveOptions: await NpcMobilityService.getOptions(request.worldId, npc) };
     }
     packet.diagnostics.estimatedTokens = ContextBudgeter.estimateTokens(packet);
     return ContextBudgeter.apply(packet);

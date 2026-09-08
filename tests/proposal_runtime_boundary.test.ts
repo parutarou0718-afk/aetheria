@@ -111,4 +111,17 @@ describe('proposal runtime boundary', () => {
     expect(dm).toMatch(/context\.mode\s*!==\s*'IN_WORLD_ACTION'/);
     expect(dm).not.toMatch(/context\.mode\s*=/);
   });
+
+  it('keeps NPC autonomy decision, validation, and building at their intended trust boundaries', () => {
+    const decision = readFileSync(resolve(root, 'src/engine/autonomy/npcAutonomyDecisionService.ts'), 'utf8');
+    const validator = readFileSync(resolve(root, 'src/engine/autonomy/npcAutonomyIntentValidator.ts'), 'utf8');
+    const builder = readFileSync(resolve(root, 'src/engine/autonomy/npcAutonomyActionBuilder.ts'), 'utf8');
+    const coordinator = readFileSync(resolve(root, 'src/engine/autonomy/npcAutonomyCoordinator.ts'), 'utf8');
+    expect(decision).not.toMatch(/recorder|WorldRepository|globalWorld\.hiddenTruths|proposalPipeline/);
+    expect(validator).not.toMatch(/aiService|llmClient|recorder/);
+    expect(builder).not.toMatch(/WorldRepository\.save|recorder\s*\.\s*commit|globalWorld\s*\./);
+    expect(coordinator).not.toMatch(/WorldRepository\.save|recorder\s*\.\s*commit|setRecorderWriteContext/);
+    expect(decision).toMatch(/NPC_AUTONOMOUS_ACTION/);
+    expect(builder).toMatch(/actorId:\s*input\.npc\.id/);
+  });
 });
