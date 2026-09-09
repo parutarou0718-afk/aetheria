@@ -2,6 +2,8 @@
   "name": "aetheria-demo",
   "private": true,
   "version": "0.1.0",
+  "description": "Aetheria Local Partner Demo 0",
+  "author": "Aetheria Demo Team",
   "main": "dist/desktop-main.cjs",
   "type": "module",
   "scripts": {
