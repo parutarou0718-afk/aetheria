@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { prepareDesktopEnvironment } from './environment';
+import { toDesktopModuleUrl } from './runtimePath';
 
 let mainWindow: BrowserWindow | null = null;
 let serverHandle: { origin: string; close(): Promise<void> } | null = null;
@@ -22,7 +23,7 @@ async function launch(): Promise<void> {
   // module so its standalone entry point cannot bind the public default port.
   process.env.AETHERIA_EMBEDDED = 'true';
   const serverPath = path.join(__dirname, 'server.cjs');
-  const { startAetheriaServer } = await import(serverPath) as typeof import('../server');
+  const { startAetheriaServer } = await import(toDesktopModuleUrl(serverPath)) as typeof import('../server');
   serverHandle = await startAetheriaServer({ host: '127.0.0.1', port: 0, bootstrap: true, includeFrontend: true, staticDir: path.join(__dirname) });
   mainWindow = new BrowserWindow(createWindowOptions());
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
