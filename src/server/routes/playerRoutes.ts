@@ -59,8 +59,21 @@ function idempotent(actionKey: string, handler: express.RequestHandler): express
       res.json = ((body: unknown) => {
         const httpStatus = res.statusCode || 200;
         const errorCode = typeof (body as { code?: unknown })?.code === 'string' ? (body as { code: string }).code : undefined;
-        finalized = PlayerRequestRunRepository.complete(key, { httpStatus, response: body, errorCode })
-          .then(() => { originalJson(body); });
+        // The handler's success body means its authoritative mutation already
+        // committed. Receipt persistence is deliberately a post-handler sidecar.
+        if (httpStatus < 400) {
+          finalized = PlayerRequestRunRepository.complete(key, { httpStatus, response: body, errorCode })
+            .then(() => { originalJson(body); })
+            .catch(() => {
+              runtimeHealth.markNotReady();
+              res.status(503);
+              originalJson({ status: 'error', code: 'REQUEST_OUTCOME_UNCONFIRMED', error: 'The world action committed, but its receipt could not be confirmed. Retry with the same request identifier after reconciliation.' });
+            });
+        } else {
+          finalized = PlayerRequestRunRepository.complete(key, { httpStatus, response: body, errorCode })
+            .catch(() => undefined)
+            .then(() => { originalJson(body); });
+        }
         return res;
       }) as express.Response['json'];
       await handler(req, res, next);

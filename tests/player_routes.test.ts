@@ -1,10 +1,12 @@
 import express from 'express';
 import type { Server } from 'node:http';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { registerPlayerRoutes } from '../src/server/routes/playerRoutes';
 import { bootstrapWithDefaultWorld } from './helpers/worldFixture';
 import { InteractionRepository } from '../src/engine/context/interactionRepository';
 import { runtimeHealth } from '../src/engine/runtime/runtimeHealthService';
+import { PlayerRequestRunRepository } from '../src/application/player/playerRequestRunRepository';
+import { globalWorld } from '../src/engine/worldState';
 
 let server: Server | undefined;
 let baseUrl = '';
@@ -28,6 +30,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await new Promise<void>((resolve, reject) => server?.close((error) => error ? reject(error) : resolve()) ?? resolve());
   server = undefined;
 });
@@ -104,5 +107,19 @@ describe('player HTTP boundary', () => {
     expect(retry.status).toBe(200);
     expect(retry.headers.get('x-aetheria-replayed')).toBe('true');
     expect((await retry.json()).newEpoch).toBe(afterFirst);
+  });
+
+  it('keeps a committed time advance explicit and unresolved when receipt finalization fails', async () => {
+    const requestId = crypto.randomUUID();
+    vi.spyOn(PlayerRequestRunRepository, 'complete').mockRejectedValueOnce(new Error('receipt store unavailable'));
+    const options = { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Aetheria-Request-Id': requestId }, body: '{}' };
+    const first = await fetch(`${baseUrl}/api/v1/player/time/advance`, options);
+    const firstBody = await first.json();
+    expect(first.status).toBe(503);
+    expect(firstBody.code).toBe('REQUEST_OUTCOME_UNCONFIRMED');
+    expect(globalWorld.snapshot.epoch).toBe(2);
+    const retry = await fetch(`${baseUrl}/api/v1/player/time/advance`, options);
+    expect(retry.status).toBe(503);
+    expect(globalWorld.snapshot.epoch).toBe(2);
   });
 });
