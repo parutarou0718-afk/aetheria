@@ -1,6 +1,6 @@
 import { createLlmClient, LlmError, type LlmClient, type LlmConfig, type LlmRequestOptions } from '../llm/llmClient';
 import type { AiRequestContext, AiServiceErrorCode } from './aiTypes';
-import { ModelRouter } from './routing/modelRouter';
+import { ModelRouter, createModelRouterFromEnvironment } from './routing/modelRouter';
 import { UpstreamPool } from './upstream/upstreamPool';
 import type { UpstreamConfig } from './upstream/upstreamTypes';
 import { InMemoryCreditService, type CreditService } from './billing/creditService';
@@ -14,7 +14,7 @@ export interface AiServiceDependencies { upstreams?: UpstreamConfig[]; pool?: Up
 class DefaultAiService implements AiService {
   private readonly pool: UpstreamPool; private readonly router: ModelRouter; private readonly ledger: UsageLedger; private readonly credits: CreditService;
   private readonly clientFactory: (config: LlmConfig) => LlmClient;
-  constructor(deps: AiServiceDependencies = {}) { this.pool = deps.pool ?? new UpstreamPool(deps.upstreams ?? []); this.router = deps.router ?? new ModelRouter(); this.ledger = deps.ledger ?? new InMemoryUsageLedger(); this.credits = deps.credits ?? new InMemoryCreditService(); this.clientFactory = deps.clientFactory ?? createLlmClient; }
+  constructor(deps: AiServiceDependencies = {}) { this.pool = deps.pool ?? new UpstreamPool(deps.upstreams ?? []); this.router = deps.router ?? createModelRouterFromEnvironment(); this.ledger = deps.ledger ?? new InMemoryUsageLedger(); this.credits = deps.credits ?? new InMemoryCreditService(); this.clientFactory = deps.clientFactory ?? createLlmClient; }
   isAvailable(context: AiRequestContext): boolean { try { return Boolean(this.pool.select(this.router.route(context.purpose, context.tier).model)); } catch { return false; } }
   async generateText(context: AiRequestContext, system: string, user: string, options: LlmRequestOptions = {}): Promise<string> { const completion = await this.request(context, system, user, options, false); return completion.content; }
   async generateJson(context: AiRequestContext, system: string, user: string, options: LlmRequestOptions = {}): Promise<unknown> { const text = await this.generateText(context, system, user, options); try { return JSON.parse(text.replace(/^```json\s*|\s*```$/g, '').trim()); } catch { throw new AiServiceError('AI returned invalid JSON.', 'AI_INVALID_RESPONSE'); } }
