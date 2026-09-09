@@ -671,6 +671,6 @@ async function startServer() {
   process.once('SIGINT', () => { void shutdown(); });
 }
 
-if (process.env.NODE_ENV !== 'test') {
+if (process.env.NODE_ENV !== 'test' && process.env.AETHERIA_EMBEDDED !== 'true') {
   void startServer();
 }

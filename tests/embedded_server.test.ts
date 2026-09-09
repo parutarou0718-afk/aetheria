@@ -12,6 +12,7 @@ describe('embedded Aetheria server', () => {
     expect(handle.origin).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
     expect(handle.port).toBeGreaterThan(0);
     expect((await fetch(`${handle.origin}/health/live`)).status).toBe(200);
+    expect((await fetch(`${handle.origin}/api/v1/player/bootstrap`)).status).toBe(200);
     await handle.close();
     await expect(fetch(`${handle.origin}/health/live`)).rejects.toThrow();
     handle = undefined;

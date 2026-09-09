@@ -18,6 +18,9 @@ async function launch(): Promise<void> {
   const configPath = app.isPackaged ? path.join(process.resourcesPath, 'demo-env') : path.join(process.cwd(), 'desktop', 'generated', 'demo-env');
   const environment = prepareDesktopEnvironment(app.getPath('userData'), configPath);
   safeLog(environment.logDirectory, `Aetheria Demo ${app.getVersion()} starting; database=${environment.databasePath}`);
+  // The Electron host owns the listener.  Set this before importing the server
+  // module so its standalone entry point cannot bind the public default port.
+  process.env.AETHERIA_EMBEDDED = 'true';
   const serverPath = path.join(__dirname, 'server.cjs');
   const { startAetheriaServer } = await import(serverPath) as typeof import('../server');
   serverHandle = await startAetheriaServer({ host: '127.0.0.1', port: 0, bootstrap: true, includeFrontend: true, staticDir: path.join(__dirname) });
