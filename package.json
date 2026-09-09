@@ -1,7 +1,8 @@
 {
-  "name": "react-example",
+  "name": "aetheria-demo",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "main": "dist/desktop-main.cjs",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
@@ -12,7 +13,10 @@
     "audit:direct-writes": "npm run audit:writes",
     "verify": "npm run lint && npm run audit:direct-writes && vitest run && npm run build",
     "clean": "rm -rf dist server.cjs",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "demo:prepare": "tsx scripts/prepare-demo-build.ts",
+    "demo:build": "npm run demo:prepare && npm run build && esbuild desktop/main.ts --bundle --platform=node --format=cjs --packages=external --outfile=dist/desktop-main.cjs && tsx scripts/scan-demo-frontend.ts",
+    "demo:make": "npm run demo:build && electron-forge make --platform=win32 --arch=x64 --config=forge.config.cjs"
   },
   "dependencies": {
     "dotenv": "^17.2.3",
@@ -28,12 +32,16 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@electron-forge/cli": "^7.11.2",
+    "@electron-forge/maker-squirrel": "^7.11.2",
+    "@electron-forge/maker-zip": "^7.11.2",
     "@tailwindcss/vite": "^4.3.3",
     "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
     "@types/sql.js": "^1.4.11",
     "@vitejs/plugin-react": "^5.2.0",
     "autoprefixer": "^10.4.21",
+    "electron": "^44.3.0",
     "esbuild": "^0.25.0",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",

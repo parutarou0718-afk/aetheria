@@ -6,6 +6,12 @@ coverage/
 *.log
 .env*
 !.env.example
+!.env.demo.example
+.env.demo.local
+.env.*.local
+desktop/generated/
+out/
+make/
 *.db
 *.sqlite
 *.sqlite3
