@@ -121,5 +121,13 @@ describe('player HTTP boundary', () => {
     const retry = await fetch(`${baseUrl}/api/v1/player/time/advance`, options);
     expect(retry.status).toBe(503);
     expect(globalWorld.snapshot.epoch).toBe(2);
+    // Restart recovery preserves ambiguity rather than replaying world truth.
+    await PlayerRequestRunRepository.markInProgressUnknown();
+    runtimeHealth.markBootstrapHealthy();
+    runtimeHealth.markCacheSynchronized();
+    const afterRecovery = await fetch(`${baseUrl}/api/v1/player/time/advance`, options);
+    expect(afterRecovery.status).toBe(409);
+    expect((await afterRecovery.json()).code).toBe('REQUEST_OUTCOME_UNKNOWN');
+    expect(globalWorld.snapshot.epoch).toBe(2);
   });
 });

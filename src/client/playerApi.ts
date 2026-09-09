@@ -4,7 +4,7 @@ export class PlayerApiError extends Error { public constructor(public readonly c
 function getSessionId(): string { const key = 'aetheria-player-session'; const existing = sessionStorage.getItem(key); if (existing) return existing; const created = crypto.randomUUID(); sessionStorage.setItem(key, created); return created; }
 const pendingMutationIds = new Map<string, string>();
 const pendingMutationStoragePrefix = 'aetheria-pending-mutation:';
-const unresolvedReceiptCodes = new Set(['REQUEST_IN_PROGRESS', 'REQUEST_OUTCOME_UNKNOWN', 'REQUEST_OUTCOME_UNCONFIRMED', 'REQUEST_RECEIPT_PERSISTENCE_FAILED']);
+const unresolvedReceiptCodes = new Set(['REQUEST_IN_PROGRESS', 'REQUEST_OUTCOME_UNKNOWN', 'REQUEST_OUTCOME_UNCONFIRMED', 'REQUEST_RECEIPT_PERSISTENCE_FAILED', 'RUNTIME_NOT_READY']);
 function pendingStorageKey(key: string): string { return `${pendingMutationStoragePrefix}${encodeURIComponent(key)}`; }
 function retainPendingMutation(key: string, id: string): void { pendingMutationIds.set(key, id); sessionStorage.setItem(pendingStorageKey(key), id); }
 function pendingMutationId(key: string): string | undefined { return pendingMutationIds.get(key) ?? sessionStorage.getItem(pendingStorageKey(key)) ?? undefined; }
