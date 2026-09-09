@@ -1,7 +1,6 @@
 import express from 'express';
 import type { Server } from 'node:http';
 import path from 'path';
-import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
 import { globalWorld } from './src/engine/worldState';
 import { SchedulerEngine, WAKE_WEIGHTS } from './src/engine/scheduler';
@@ -615,6 +614,7 @@ export async function createApp(options: CreateAppOptions = {}): Promise<express
   // === VITE MIDDLEWARE SETUP ===
   if (!options.includeFrontend) return app;
   if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
