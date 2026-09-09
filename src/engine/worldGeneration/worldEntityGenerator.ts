@@ -98,10 +98,20 @@ Return JSON ONLY matching structure:
   "genesisEventDescription": "string"
 }`;
 
-    const parsed = await this.invokeAi(system, user, profile.world_id);
+    let parsed = this.normalizeConstrainedCharacterTypes(
+      await this.invokeAi(system, user, profile.world_id)
+    );
 
     try {
-      const validated = ZodEntityOutput.safeParse(parsed);
+      let validated = ZodEntityOutput.safeParse(parsed);
+      if (!validated.success) {
+        parsed = this.normalizeConstrainedCharacterTypes(await this.invokeAi(
+          system,
+          `${user}\n\nYour first response was structurally incomplete. Retry once with every required field present; every character must include type exactly "PC" or "NPC".`,
+          profile.world_id,
+        ));
+        validated = ZodEntityOutput.safeParse(parsed);
+      }
       if (!validated.success) {
         throw new WorldEntityGenerationError(
           `AI returned malformed entity JSON: ${this.safeIssue(validated)}`
@@ -136,6 +146,27 @@ Return JSON ONLY matching structure:
     } catch {
       return 'unknown schema error';
     }
+  }
+
+  /**
+   * Genesis reserves these identifiers for the player and initial NPCs. Some
+   * OpenAI-compatible models omit an otherwise explicit enum field; recover
+   * only that unambiguous omission before preserving Zod as the strict gate.
+   */
+  private static normalizeConstrainedCharacterTypes(parsed: unknown): unknown {
+    if (!parsed || typeof parsed !== 'object' || !Array.isArray((parsed as { characters?: unknown }).characters)) return parsed;
+    return {
+      ...(parsed as Record<string, unknown>),
+      characters: (parsed as { characters: unknown[] }).characters.map((candidate) => {
+        if (!candidate || typeof candidate !== 'object') return candidate;
+        const character = candidate as Record<string, unknown>;
+        if (character.type !== undefined && character.type !== null && character.type !== '') return character;
+        const key = typeof character.idKey === 'string' ? character.idKey.trim().toLowerCase() : '';
+        if (key === 'pc') return { ...character, type: 'PC' };
+        if (/^npc\d+$/.test(key)) return { ...character, type: 'NPC' };
+        return character;
+      }),
+    };
   }
 
   private static buildEntitiesFromParsed(
