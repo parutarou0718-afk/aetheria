@@ -22,6 +22,7 @@ async function launch(): Promise<void> {
   // The Electron host owns the listener.  Set this before importing the server
   // module so its standalone entry point cannot bind the public default port.
   process.env.AETHERIA_EMBEDDED = 'true';
+  process.env.NODE_ENV = 'production';
   const serverPath = path.join(__dirname, 'server.cjs');
   const { startAetheriaServer } = await import(toDesktopModuleUrl(serverPath)) as typeof import('../server');
   serverHandle = await startAetheriaServer({ host: '127.0.0.1', port: 0, bootstrap: true, includeFrontend: true, staticDir: path.join(__dirname) });
