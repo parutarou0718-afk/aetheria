@@ -1,4 +1,5 @@
 import express from 'express';
+import type { Server } from 'node:http';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
@@ -172,6 +173,18 @@ export function registerCharacterActionRoutes(app: express.Express): void {
 export interface CreateAppOptions {
   bootstrap?: boolean;
   includeFrontend?: boolean;
+  staticDir?: string;
+}
+
+export interface StartAetheriaServerOptions extends CreateAppOptions {
+  host?: string;
+  port?: number;
+}
+
+export interface AetheriaServerHandle {
+  origin: string;
+  port: number;
+  close(): Promise<void>;
 }
 
 function isDeveloperRoute(pathname: string): boolean {
@@ -608,7 +621,7 @@ export async function createApp(options: CreateAppOptions = {}): Promise<express
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
+    const distPath = options.staticDir ?? path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (req: express.Request, res: express.Response) => {
       res.sendFile(path.join(distPath, 'index.html'));
@@ -618,23 +631,41 @@ export async function createApp(options: CreateAppOptions = {}): Promise<express
   return app;
 }
 
-async function startServer() {
-  const PORT = 3000;
-  const app = await createApp({ bootstrap: true, includeFrontend: true });
-  const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+async function closeAetheriaServer(server: Server): Promise<void> {
+  const closed = await Promise.race([
+    new Promise<boolean>((resolve) => server.close(() => resolve(true))),
+    new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 10_000)),
+  ]);
+  if (!closed) { console.error('[Server] Graceful HTTP shutdown timed out.'); process.exitCode = 1; }
+  try { await dbManager.flush(); await dbManager.close(); }
+  catch (error) { console.error('[Server] Graceful persistence shutdown failed:', error); process.exitCode = 1; }
+}
+
+/** Starts the only HTTP runtime implementation for standalone and desktop hosts. */
+export async function startAetheriaServer(options: StartAetheriaServerOptions = {}): Promise<AetheriaServerHandle> {
+  const host = options.host ?? '0.0.0.0';
+  const port = options.port ?? 3000;
+  const app = await createApp({ bootstrap: options.bootstrap ?? true, includeFrontend: options.includeFrontend ?? true, staticDir: options.staticDir });
+  const server = await new Promise<Server>((resolve, reject) => {
+    const listener = app.listen(port, host, () => resolve(listener));
+    listener.once('error', reject);
   });
+  const address = server.address();
+  if (!address || typeof address === 'string') {
+    await closeAetheriaServer(server);
+    throw new Error('Aetheria server did not expose a TCP address.');
+  }
+  return { origin: `http://${host}:${address.port}`, port: address.port, close: () => closeAetheriaServer(server) };
+}
+
+async function startServer() {
+  const handle = await startAetheriaServer({ host: '0.0.0.0', port: 3000, bootstrap: true, includeFrontend: true });
+  console.log(`Server running on ${handle.origin}`);
   let stopping = false;
   const shutdown = async () => {
     if (stopping) return;
     stopping = true;
-    const closed = await Promise.race([
-      new Promise<boolean>((resolve) => server.close(() => resolve(true))),
-      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 10_000)),
-    ]);
-    if (!closed) { console.error('[Server] Graceful HTTP shutdown timed out.'); process.exitCode = 1; }
-    try { await dbManager.flush(); await dbManager.close(); }
-    catch (error) { console.error('[Server] Graceful persistence shutdown failed:', error); process.exitCode = 1; }
+    await handle.close();
   };
   process.once('SIGTERM', () => { void shutdown(); });
   process.once('SIGINT', () => { void shutdown(); });
