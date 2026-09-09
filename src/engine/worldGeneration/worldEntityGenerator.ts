@@ -119,7 +119,7 @@ Return JSON ONLY matching structure:
   private static async invokeAi(system: string, user: string, worldId: string): Promise<any> {
     try {
       return await aiService.generateJson({ userId: 'SYSTEM_USER', worldId, purpose: 'WORLD_ENTITY_GENERATION' }, system, user, {
-        timeoutMs: 30000,
+        timeoutMs: 120000,
         jsonSchemaHint:
           'Return strictly a JSON object with keys "characters", "organizations", "facts", "seeds", "genesisEventDescription".',
       });

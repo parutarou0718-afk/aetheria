@@ -91,7 +91,7 @@ Return JSON ONLY matching:
   private static async invokeAi(system: string, user: string, worldId: string): Promise<any> {
     try {
       return await aiService.generateJson({ userId: 'SYSTEM_USER', worldId, purpose: 'WORLD_SKELETON' }, system, user, {
-        timeoutMs: 30000,
+        timeoutMs: 120000,
         jsonSchemaHint: 'Return strictly a JSON object with keys "locations" and "hiddenTruths".',
       });
     } catch (err) {

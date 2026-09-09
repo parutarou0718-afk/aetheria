@@ -36,4 +36,15 @@ describe('AI Gateway', () => {
     expect(await credits.getBalance('user')).toBe(10);
     expect((await ledger.getByUser('user'))[0]).toMatchObject({ status: 'FAILED', chargedCredits: 0 });
   });
+
+  it('requests JSON mode for structured generation through the gateway', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      choices: [{ message: { content: '{"world":"ready"}' } }],
+    }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const service = createAiService({ upstreams: [upstreamA], credits: new InMemoryCreditService({ user: 10 }) });
+
+    await expect(service.generateJson({ userId: 'user', worldId: 'world', purpose: 'DM_ACTION' }, 's', 'u')).resolves.toEqual({ world: 'ready' });
+    expect(fetchMock.mock.calls[0][1].body).toContain('"response_format":{"type":"json_object"}');
+  });
 });
