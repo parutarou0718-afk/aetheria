@@ -1,6 +1,6 @@
-# 🌌 Aetheria — AI Native 永恒因果沙盒 RPG (AI Persistent World RPG)
+# 🌌 Aetheria — AI-Native Persistent-World Sandbox RPG
 
-> **全进程 AI 驱动的无界因果沙盒** | **无预设剧本的开放世界推演引擎** | **Phase 2 权威原子 Recorder & 状态原子一致性引擎**
+> **An end-to-end AI-driven, open-ended causality sandbox** | **An open-world inference engine without a preset script** | **Phase 2 authoritative Recorder and atomic state-consistency engine**
 
 ![React 19](https://img.shields.io/badge/React-19.0-61DAFB?logo=react&logoColor=black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript&logoColor=white)
@@ -10,6 +10,19 @@
 ![License](https://img.shields.io/badge/License-MIT-green)
 
 ---
+
+## Overview
+
+**Aetheria** is an AI-native persistent-world sandbox RPG. Its Phase 2
+architecture centralizes world-state writes in an authoritative Recorder with
+a Prepare–Persist–Publish pipeline, SQLite transactions, an immutable state
+change log, and runtime write guards for the public world state. AI Dungeon
+Master actions are expressed as `StateChangeProposal` objects and committed
+through that single path.
+
+The project uses a provider-neutral, OpenAI-compatible LLM API together with
+React, TypeScript, Express, and WASM SQLite. The original Chinese technical
+notes follow.
 
 ## 📖 项目简介 (Overview)
 
