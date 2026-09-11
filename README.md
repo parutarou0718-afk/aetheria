@@ -1,102 +1,89 @@
 # 🌌 Aetheria — AI-Native Persistent-World Sandbox RPG
 
-> **An end-to-end AI-driven, open-ended causality sandbox** | **An open-world inference engine without a preset script** | **Phase 2 authoritative Recorder and atomic state-consistency engine**
+**An experiment in letting an LLM-driven system act inside controlled state boundaries.** Aetheria is an AI-native persistent-world sandbox RPG in which an AI Dungeon Master can reason about player actions, but cannot directly mutate the public world state.
 
-![React 19](https://img.shields.io/badge/React-19.0-61DAFB?logo=react&logoColor=black)
-![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript&logoColor=white)
-![TailwindCSS v4](https://img.shields.io/badge/TailwindCSS-v4-06B6D4?logo=tailwindcss&logoColor=white)
-![LLM API](https://img.shields.io/badge/LLM-OpenAI--compatible-4B8BBE)
-![SQLite WAL](https://img.shields.io/badge/SQLite-WASM%2FTransaction-003B57?logo=sqlite&logoColor=white)
-![License](https://img.shields.io/badge/License-MIT-green)
+Every proposed state change is represented as a `StateChangeProposal` and passes through a single authoritative Recorder. The Recorder validates the batch in an isolated working set, persists it and its state-change log in a SQLite transaction, then publishes it to the runtime cache. If the publish phase fails, the system reloads from persistence rather than leaving partial in-memory state.
 
----
+## My role and development approach
 
-## Overview
+Aetheria was developed through **controlled agent-assisted development**. I defined the problem of safely translating AI-generated intent into real application state; set the architecture direction and authority boundary; scoped the allowed proposal pipeline; identified validation, transaction, recovery, and idempotency risks; and used checkpointed commits to keep changes reviewable and reversible.
 
-**Aetheria** is an AI-native persistent-world sandbox RPG. Its Phase 2
-architecture centralizes world-state writes in an authoritative Recorder with
-a Prepare–Persist–Publish pipeline, SQLite transactions, an immutable state
-change log, and runtime write guards for the public world state. AI Dungeon
-Master actions are expressed as `StateChangeProposal` objects and committed
-through that single path.
+Coding agents implemented bounded tasks. I used focused tests, static direct-write audits, regression checks, observed runtime behavior, and commit review to accept or reject iterations. This repository does not claim that the LLM or the coding agent is trusted to write state directly.
 
-The project uses a provider-neutral, OpenAI-compatible LLM API together with
-React, TypeScript, Express, and WASM SQLite. The original Chinese technical
-notes follow.
+## What this project demonstrates
 
-## 📖 项目简介 (Overview)
+- **AI integration with controlled execution:** LLM output is treated as a proposal, not an instruction to mutate state.
+- **Risk identification and boundary design:** a single Recorder authority, runtime write guards, invariant validation, and state-change logging address direct-write and partial-update risks.
+- **Recovery and operational thinking:** the documented runtime includes transaction boundaries, cache reload recovery, request idempotency, and long-session hardening work.
+- **Validation-led iteration:** `npm run verify` combines TypeScript checking, direct-write auditing, Vitest, and a production build; the repository also contains dedicated atomicity, rollback, recovery, and boundary tests.
+- **Scope discipline:** the project remains an engineering experiment in controlled LLM action inside a game system, not a claim of production-ready autonomous AI.
 
-**Aetheria** 是一款基于 **AI Native 架构** 打造的开放世界沙盒角色扮演游戏（RPG）。在 Phase 2 收口阶段，系统成功升级为**具备三阶段原子提交 (Prepare-Persist-Publish) 的权威 Recorder 单一写入口**。
+## Controlled state-change pipeline
 
-数据库事务 (SQLite Transaction)、状态变更日志 (State Change Log) 与运行时内存缓存 (`globalWorld`) 实现了真正的**强原子一致性**：任何一组 `StateChangeProposal` 提案，要么全部持久化并同步至内存，要么在出现任意校验或物理错误时整体回滚、保持原状。同时通过 Proxy 层施加 Write Guard 强行封锁对 `globalWorld` 的直接修改。
+```text
+LLM / AI Dungeon Master
+→ StateChangeProposal
+→ isolated Recorder working set and invariant validation
+→ SQLite transaction and state_change_log
+→ Publish to protected runtime state
+→ reload recovery if publishing fails
+```
 
----
+The runtime protects `globalWorld` with write guards. AI-generated decisions and other world changes use `Recorder.commit()` rather than bypassing the authority boundary.
 
-## ✨ 核心架构特色 (Key Architectural Highlights)
+## Engineering evidence
 
-### 1. 🛡️ 权威 Recorder 单一写入口 (Authoritative Single Write Entry Point)
-* **Write Guard 拦截**：对 `globalWorld` 的属性、Map、Array 进行全局 Proxy 监控，非 Recorder 事务上下文的直接修改将立即抛出异常并阻止执行。
-* **三阶段提交 (3-Stage Commit Pipeline)**：
-  1. **Prepare（工作集隔离与不变式校验）**：在隔离的 `RecorderWorkingSet` 中执行提案，经由 `BatchInvariantValidator` 校验死者行为、负资产、缺失关联等守卫条件；
-  2. **Persist（数据库事务与日志持久化）**：在单个 SQLite 事务中完成所有状态更新与 `state_change_log` 写入；
-  3. **Publish（内存缓存同步与崩溃恢复）**：将更新同步至 `globalWorld` 内存缓存，若 Publish 阶段异常则自动发起数据库重载恢复。
+- [Architecture](ARCHITECTURE.md) describes the authoritative Recorder and atomic state-consistency model.
+- [Phase 2 closure report](docs/PHASE2_CLOSURE_REPORT.md) records the closure work and verification context.
+- [State write audit](docs/STATE_WRITE_AUDIT.md) documents the direct-write audit boundary.
+- The commit history records incremental work on proposal pipelines, semantic and causal validation, context isolation, bounded NPC autonomy, durable request idempotency, runtime recovery, and long-session hardening.
 
-### 2. 🎲 全进程 AI DM 智能推演 (Full-Process AI DM & Proposals)
-* AI DM 所有的推演决策与状态改变必须输出严格的 `StateChangeProposal` 提案，通过 `Recorder.commit()` 进行权威一致性提交。
+## Technology
 
-### 3. 🕸️ 永恒因果与隐秘真相 (Causality & Hidden Truths)
-* 完整记录世界纪元 (Epoch) 演化历史与状态变更日志 (`state_change_log`)，支持跨纪元追溯与因果连贯性校验。
+- React 19, TypeScript, Tailwind CSS, Motion, and Lucide React
+- Express and Node.js, bundled with Esbuild
+- WASM SQLite / sql.js with transactional persistence
+- Provider-neutral, OpenAI-compatible LLM API configuration
+- Vite, Vitest, and TypeScript compiler checking
 
----
-
-## 🛠️ 技术栈 (Tech Stack)
-
-* **前端 (Frontend)**: React 19, TypeScript, Tailwind CSS v4, Motion (Framer Motion), Lucide React
-* **后端 (Backend)**: Express, Node.js (CommonJS Bundled via Esbuild)
-* **数据库 (Database)**: WASM SQLite / sql.js 事务持久化 (`aetheria.db`)
-* **AI 引擎 (AI Engine)**: Provider-neutral / OpenAI-compatible LLM API；可通过 OpenAI-compatible endpoint 配置不同兼容模型服务。
-* **构建与测试**: Vite, Esbuild, Vitest, TypeScript `tsc --noEmit`
-
----
-
-## 🚀 验证与测试 (Verification & Tests)
+## Verification
 
 ```bash
-# 运行完整校验流程 (TypeScript 类型检查 + 零直接写入静态审计 + 完整单元测试)
+# TypeScript checking, direct-write audit, Vitest, and production build
 npm run verify
 
-# 单独运行状态直接写入扫描审计
+# Direct state-write scan
 npm run audit:direct-writes
 
-# 运行 Vitest 自动化测试套件
+# Automated test suite
 npx vitest run
 ```
 
----
+## Project structure
 
-## 📂 项目结构概览 (Project Structure)
-
-```
+```text
 .
-├── server.ts                   # Express 后端服务 & API 路由 (Provider-neutral LLM 配置)
+├── server.ts                   # Express server and provider-neutral LLM configuration
 ├── src/
-│   ├── App.tsx                 # 应用主入口组件与布局控制
-│   ├── components/             # UI 功能组件
-│   └── engine/                 # 游戏核心逻辑引擎
-│       ├── recorder/           # 权威 Recorder 引擎 (Prepare/Persist/Publish)
-│       ├── persistence/        # SQLite WASM 数据库与 Schema
-│       ├── world/              # WorldRepository 与 WorldBootstrap
-│       └── worldState.ts       # 全局世界状态 (Write Guard 受保护)
+│   ├── components/             # UI components
+│   └── engine/
+│       ├── recorder/           # Authoritative Prepare–Persist–Publish Recorder
+│       ├── persistence/        # WASM SQLite schema and persistence
+│       ├── world/              # WorldRepository and WorldBootstrap
+│       └── worldState.ts       # Protected public world state
 ├── scripts/
-│   └── audit-direct-writes.ts  # AST/正则 状态直接写入审计脚本
-├── tests/                      # Vitest 单元与集成测试套件
-├── ARCHITECTURE.md             # Phase 2 架构与原子一致性说明文档
+│   └── audit-direct-writes.ts  # Direct state-write audit
+├── tests/                      # Unit and integration coverage
+├── ARCHITECTURE.md
 └── docs/
-    └── PHASE2_CLOSURE_REPORT.md# Phase 2 最终收口工程报告
 ```
 
----
+## Related portfolio projects
 
-## 📄 开源协议 (License)
+- [Research Workspace](https://github.com/parutarou0718-afk/research-workspace) — a structured AI workflow that turns paper analysis into reviewable research ideas.
+- [GymFlow](https://github.com/parutarou0718-afk/GymFlow) — a local-first product case with explicit module and persistence boundaries.
+- [PM Agent Skills](https://github.com/parutarou0718-afk/pm-agent-skills) — the reusable Discovery → Scope Reduction → PRD → Plan → Acceptance method behind controlled agent-assisted development.
 
-本项目遵循 [MIT License](LICENSE) 协议。
+## License
+
+[MIT License](LICENSE)
