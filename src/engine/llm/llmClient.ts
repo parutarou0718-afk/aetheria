@@ -31,6 +31,7 @@ export interface LlmClient {
   generateJson(system: string, user: string, options?: LlmRequestOptions): Promise<unknown>;
   generateText(system: string, user: string, options?: LlmRequestOptions): Promise<string>;
   generateTextWithUsage(system: string, user: string, options?: LlmRequestOptions): Promise<LlmCompletion>;
+  generateJsonWithUsage(system: string, user: string, options?: LlmRequestOptions): Promise<LlmCompletion>;
 }
 
 export interface LlmCompletion { content: string; inputTokens?: number; outputTokens?: number; }
@@ -92,6 +93,12 @@ export function createLlmClient(config: LlmConfig): LlmClient {
     generateJson: (system, user, options = {}) => generateJsonWithConfig(config, system, user, options),
     generateText: (system, user, options = {}) => generateTextWithConfig(config, system, user, options),
     generateTextWithUsage: (system, user, options = {}) => requestCompletion([{ role: 'system', content: system }, { role: 'user', content: user }], false, config, options.timeoutMs),
+    generateJsonWithUsage: (system, user, options = {}) => requestCompletion(
+      [{ role: 'system', content: system }, { role: 'user', content: options.jsonSchemaHint ? `${user}\n\nJSON SCHEMA:\n${options.jsonSchemaHint}` : user }],
+      true,
+      config,
+      options.timeoutMs
+    ),
   };
 }
 

@@ -22,6 +22,7 @@ export default defineConfig(() => {
     // corrupts that database and lets fixtures overwrite each other.
     test: {
       fileParallelism: false,
+      maxWorkers: 1,
     },
   };
 });

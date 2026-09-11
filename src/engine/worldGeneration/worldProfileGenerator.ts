@@ -100,7 +100,7 @@ Return JSON ONLY matching this structure:
     let parsed: any;
     try {
       parsed = await aiService.generateJson({ userId: 'SYSTEM_USER', worldId: request.worldId, purpose: 'WORLD_PROFILE' }, system, user, {
-        timeoutMs: 30000,
+        timeoutMs: 120000,
         jsonSchemaHint: 'Return strictly a JSON object matching the World Profile schema above.',
       });
     } catch (err) {
